@@ -1,0 +1,1737 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asteroid Impact Simulator</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+  <style>
+    :root {
+      --bg:       #0b0f1e;
+      --sidebar:  #0d1326;
+      --surface:  #111827;
+      --surface2: #1a2235;
+      --border:   #1e3a5f;
+      --accent:   #3b82f6;
+      --accent2:  #8b5cf6;
+      --danger:   #ef4444;
+      --success:  #22c55e;
+      --warning:  #f59e0b;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --sidebar-w: 220px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      display: flex;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      z-index: 100;
+      overflow-y: auto;
+    }
+    .sb-logo {
+      padding: 1.2rem 1rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .sb-logo .logo-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+    }
+    .sb-logo .logo-sub {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .sb-logo .logo-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+      margin-right: 6px;
+      box-shadow: 0 0 8px var(--danger);
+    }
+
+    .sb-section { padding: 1rem 0.75rem 0.5rem; }
+    .sb-section-label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      padding: 0 0.25rem;
+      margin-bottom: 0.4rem;
+    }
+    .sb-item {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.55rem 0.75rem;
+      border-radius: 8px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.85rem;
+      transition: all 0.15s;
+      margin-bottom: 1px;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+    .sb-item:hover { background: var(--surface2); color: var(--text); }
+    .sb-item.active { background: rgba(59,130,246,0.12); color: var(--accent); }
+    .sb-item .icon { font-size: 1rem; width: 18px; text-align: center; }
+
+    .sb-status {
+      margin-top: auto;
+      padding: 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+    .sb-status-title { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.6rem; }
+    .sb-status-row { display: flex; align-items: center; justify-content: space-between; padding: 0.25rem 0; font-size: 0.75rem; }
+    .sb-status-row .label { color: var(--muted); }
+    .sb-status-row .val { font-weight: 600; color: var(--text); }
+    .dot-ok  { color: var(--success); }
+    .dot-err { color: var(--danger); }
+
+    /* ── Main ── */
+    #main {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Topbar ── */
+    #topbar {
+      height: 56px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 1.5rem;
+      gap: 1rem;
+      background: rgba(11,15,30,0.95);
+      position: sticky; top: 0; z-index: 50;
+    }
+    #topbar h1 { font-size: 1rem; font-weight: 700; }
+    #topbar .sub { color: var(--muted); font-size: 0.8rem; flex: 1; }
+    .btn {
+      padding: 0.5rem 1rem;
+      border-radius: 8px; border: none;
+      cursor: pointer; font-size: 0.82rem; font-weight: 600;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-sm { padding: 0.35rem 0.75rem; font-size: 0.78rem; }
+    .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger-soft { background: rgba(239,68,68,0.12); color: var(--danger); border: 1px solid rgba(239,68,68,0.25); }
+
+    /* ── Content pages ── */
+    .page { display: none; padding: 1.5rem; flex: 1; }
+    .page.active { display: block; }
+
+    /* ── Dashboard page ── */
+    .dash-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    @media (max-width: 900px) { .dash-grid { grid-template-columns: 1fr; } }
+
+    .form-map-split {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    @media (max-width: 1100px) { .form-map-split { grid-template-columns: 1fr; } }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 1rem 1.25rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-header h3 { font-size: 0.9rem; font-weight: 600; }
+    .card-body { padding: 1.25rem; }
+    .card-body-sm { padding: 0.9rem 1.25rem; }
+
+    /* ── Stap-kaarten ── */
+    .step-label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+      font-weight: 700;
+    }
+    .select-search {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.55rem 0.9rem;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      outline: none;
+      margin-bottom: 0.6rem;
+    }
+    .select-search:focus { border-color: var(--accent); }
+    .select-search::placeholder { color: var(--muted); }
+    .dropdown-list {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      max-height: 160px;
+      overflow-y: auto;
+      display: none;
+      margin-bottom: 0.75rem;
+    }
+    .dropdown-list.open { display: block; }
+    .dropdown-item {
+      padding: 0.5rem 0.9rem;
+      cursor: pointer;
+      font-size: 0.82rem;
+      transition: background 0.1s;
+    }
+    .dropdown-item:hover { background: rgba(59,130,246,0.12); color: var(--accent); }
+
+    .selection-info {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      display: none;
+    }
+    .selection-info.visible { display: block; }
+    .si-name { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.4rem; }
+    .si-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem 0.5rem; }
+    .si-row { display: flex; justify-content: space-between; font-size: 0.78rem; }
+    .si-row .k { color: var(--muted); }
+    .si-row .v { font-weight: 600; }
+    .badge-danger-sm { background: rgba(239,68,68,0.15); color: var(--danger); padding: 0.1rem 0.5rem; border-radius: 20px; font-size: 0.7rem; font-weight: 700; }
+    .badge-ok-sm     { background: rgba(34,197,94,0.12);  color: var(--success); padding: 0.1rem 0.5rem; border-radius: 20px; font-size: 0.7rem; font-weight: 700; }
+
+    /* ── Map ── */
+    #world-map {
+      height: 420px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #0d1520;
+    }
+    .leaflet-control-zoom a { background: rgba(255,255,255,0.92) !important; border-color: #bbb !important; color: #333 !important; font-weight: 700; }
+    .leaflet-control-zoom a:hover { background: #fff !important; color: #000 !important; }
+    .leaflet-control-attribution { background: rgba(255,255,255,0.75) !important; color: #555 !important; font-size: 0.62rem !important; }
+    .leaflet-control-attribution a { color: #555 !important; }
+    .map-tooltip { background: rgba(255,255,255,0.95) !important; border: 1px solid #ccc !important; border-radius: 8px !important; padding: 7px 11px !important; color: #111 !important; font-family: 'Segoe UI', sans-serif !important; box-shadow: 0 4px 16px rgba(0,0,0,0.2) !important; pointer-events: none; }
+    .map-tooltip::before { display: none !important; }
+    .tt-name { font-weight: 700; font-size: 0.85rem; color: #111; }
+    .tt-pop  { color: #555; font-size: 0.75rem; margin-top: 2px; }
+    .map-hint { text-align: center; color: var(--muted); font-size: 0.75rem; margin-top: 0.5rem; }
+
+    /* ── Stats row ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    @media (max-width: 900px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+    }
+    .stat-icon { font-size: 1.3rem; margin-bottom: 0.4rem; }
+    .stat-val { font-size: 1.7rem; font-weight: 800; line-height: 1; margin-bottom: 0.2rem; }
+    .stat-label { font-size: 0.72rem; color: var(--muted); }
+    .stat-sub   { font-size: 0.72rem; color: var(--muted); margin-top: 0.15rem; }
+
+    /* ── Results grid ── */
+    .results-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 320px;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    @media (max-width: 1200px) { .results-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 800px)  { .results-grid { grid-template-columns: 1fr; } }
+
+    /* ── Zones tabel ── */
+    .zones-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .zones-table th { padding: 0.5rem 0.75rem; text-align: left; color: var(--muted); font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
+    .zones-table td { padding: 0.55rem 0.75rem; border-bottom: 1px solid rgba(30,58,95,0.3); }
+    .zones-table tr:last-child td { border-bottom: none; }
+    .zone-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+
+    /* ── Donut chart ── */
+    .donut-wrap { position: relative; width: 160px; height: 160px; margin: 0 auto 0.75rem; }
+    .donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+    .donut-center .dc-val { font-size: 1.3rem; font-weight: 800; color: var(--danger); }
+    .donut-center .dc-label { font-size: 0.65rem; color: var(--muted); margin-top: 2px; }
+    .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; margin-bottom: 0.3rem; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .legend-val { margin-left: auto; font-weight: 600; }
+
+    /* ── Recente simulaties ── */
+    .sim-history-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid rgba(30,58,95,0.3);
+    }
+    .sim-history-item:last-child { border-bottom: none; }
+    .shi-icon { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+    .shi-info { flex: 1; min-width: 0; }
+    .shi-title { font-size: 0.82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .shi-sub   { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+    .shi-val   { text-align: right; }
+    .shi-mag   { font-size: 0.82rem; font-weight: 700; }
+    .shi-date  { font-size: 0.68rem; color: var(--muted); }
+
+    /* ── Alert banner ── */
+    .alert { padding: 0.75rem 1rem; border-radius: 8px; display: flex; align-items: center; gap: 0.6rem; font-size: 0.82rem; margin-bottom: 1rem; }
+    .alert-ext  { background: rgba(139,0,0,0.18);   border: 1px solid rgba(239,68,68,0.6);   color: #fca5a5; font-weight:700; }
+    .alert-plan { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.4);   color: #fca5a5; }
+    .alert-sev  { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3);  color: #fcd34d; }
+    .alert-kra  { background: rgba(234,88,12,0.1);  border: 1px solid rgba(234,88,12,0.3);   color: #fdba74; }
+    .alert-mod  { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3);  color: #93c5fd; }
+
+    /* ── Tables (asteroïden / landen) ── */
+    .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    thead tr { background: var(--surface2); }
+    th { padding: 0.7rem 0.9rem; text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; user-select: none; white-space: nowrap; }
+    th:hover { color: var(--text); }
+    th.sort-asc .si::after  { content: ' ↑'; }
+    th.sort-desc .si::after { content: ' ↓'; }
+    th:not(.sort-asc):not(.sort-desc) .si::after { content: ' ↕'; opacity: 0.4; }
+    td { padding: 0.6rem 0.9rem; border-top: 1px solid rgba(30,58,95,0.35); vertical-align: middle; }
+    tbody tr:hover { background: var(--surface2); }
+    .badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 20px; font-size: 0.7rem; font-weight: 700; }
+    .b-danger { background: rgba(239,68,68,0.15); color: var(--danger); }
+    .b-ok     { background: rgba(34,197,94,0.12);  color: var(--success); }
+    .pagination { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.9rem; border-top: 1px solid var(--border); font-size: 0.78rem; color: var(--muted); }
+    .page-btns { display: flex; gap: 0.3rem; }
+    .page-btns button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--text); cursor: pointer; font-size: 0.78rem; transition: all 0.15s; }
+    .page-btns button:hover { border-color: var(--accent); color: var(--accent); }
+    .page-btns button.active { background: var(--accent); border-color: var(--accent); color: white; }
+    .page-btns button:disabled { opacity: 0.3; cursor: not-allowed; }
+    .tbl-controls { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.9rem; flex-wrap: wrap; }
+    .tbl-search { flex: 1; min-width: 180px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 0.8rem; border-radius: 8px; font-size: 0.82rem; outline: none; }
+    .tbl-search:focus { border-color: var(--accent); }
+    .tbl-search::placeholder { color: var(--muted); }
+    .rows-sel { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.45rem 0.7rem; border-radius: 8px; font-size: 0.78rem; cursor: pointer; }
+
+    /* ── Modal ── */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; padding: 1rem; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 600px; max-height: 82vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 64px rgba(0,0,0,0.8); }
+    .modal-header { padding: 1.25rem; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, rgba(59,130,246,0.07), rgba(139,92,246,0.07)); display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0; }
+    .modal-header h3 { font-size: 1rem; font-weight: 700; margin-bottom: 0.2rem; }
+    .modal-header .meta { font-size: 0.78rem; color: var(--muted); }
+    .modal-close { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; padding: 0; }
+    .modal-close:hover { color: var(--text); }
+    .modal-search { padding: 0.9rem 1.25rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .modal-search input { width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 0.55rem 0.9rem; border-radius: 8px; font-size: 0.82rem; outline: none; }
+    .modal-search input:focus { border-color: var(--accent); }
+    .modal-search input::placeholder { color: var(--muted); }
+    .modal-list { overflow-y: auto; flex: 1; padding: 0.4rem; }
+    .mai { display: flex; align-items: center; gap: 0.7rem; padding: 0.7rem 0.9rem; border-radius: 8px; cursor: pointer; transition: background 0.1s; }
+    .mai:hover { background: var(--surface2); }
+    .mai-icon { font-size: 1.3rem; flex-shrink: 0; }
+    .mai-info { flex: 1; min-width: 0; }
+    .mai-name { font-weight: 600; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mai-meta { font-size: 0.73rem; color: var(--muted); margin-top: 1px; }
+
+    /* ── Spinner / loading ── */
+    .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; vertical-align: middle; margin-right: 0.4rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ── */
+    #toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1.1rem; font-size: 0.85rem; max-width: 300px; transform: translateY(80px); opacity: 0; transition: all 0.25s; z-index: 9999; }
+    #toast.show { transform: translateY(0); opacity: 1; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Krantenartikel ── */
+    .newspaper-wrap {
+      background: #f8f4ee;
+      border-radius: 8px;
+      padding: 2rem 2.5rem;
+      color: #1a1a1a;
+      font-family: Georgia, 'Times New Roman', serif;
+    }
+
+    .newspaper-wrap h1 {
+      font-size: 1.75rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: -0.3px;
+      line-height: 1.15;
+      color: #111;
+      border-bottom: 3px solid #111;
+      padding-bottom: 0.6rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .newspaper-wrap h2 {
+      font-size: 1.1rem;
+      font-weight: 400;
+      font-style: italic;
+      color: #444;
+      margin-bottom: 0.4rem;
+      border: none;
+    }
+
+    .newspaper-wrap hr {
+      border: none;
+      border-top: 1px solid #bbb;
+      margin: 0.75rem 0 1rem;
+    }
+
+    .newspaper-wrap em {
+      font-size: 0.82rem;
+      color: #666;
+      font-style: italic;
+    }
+
+    .newspaper-wrap p {
+      font-size: 0.95rem;
+      line-height: 1.75;
+      color: #222;
+      margin-bottom: 0.9rem;
+      text-align: justify;
+      hyphens: auto;
+    }
+
+    .newspaper-wrap strong {
+      font-weight: 700;
+      color: #111;
+    }
+
+    .newspaper-logo {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid #333;
+    }
+
+    .newspaper-logo .name {
+      font-size: 1rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: #111;
+    }
+
+    .newspaper-logo .edition {
+      font-size: 0.72rem;
+      color: #777;
+      font-style: italic;
+    }
+
+    #article-stream-cursor {
+      display: inline-block;
+      width: 2px;
+      height: 1em;
+      background: #333;
+      margin-left: 2px;
+      animation: blink 0.7s step-end infinite;
+      vertical-align: text-bottom;
+    }
+
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .newspaper-img-wrap {
+      margin: 0 0 1.25rem;
+      position: relative;
+      border: 1px solid #ccc;
+      background: #111;
+      border-radius: 4px;
+      overflow: hidden;
+      min-height: 80px;
+    }
+
+    .newspaper-img-wrap img {
+      width: 100%;
+      display: block;
+      max-height: 420px;
+      object-fit: cover;
+    }
+
+    .newspaper-img-caption {
+      font-size: 0.72rem;
+      color: #888;
+      font-style: italic;
+      padding: 4px 8px;
+      background: #f0ece4;
+      border-top: 1px solid #ddd;
+    }
+
+    .newspaper-img-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 2rem;
+      color: #888;
+      font-size: 0.82rem;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    .newspaper-img-loading .spinner {
+      border-color: #ccc;
+      border-top-color: #555;
+    }
+
+    .article-btn-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .btn-article {
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      color: #e2c97e;
+      border: 1px solid #e2c97e44;
+      padding: 0.65rem 1.4rem;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-article:hover { background: linear-gradient(135deg, #16213e, #0f3460); border-color: #e2c97e88; }
+    .btn-article:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .article-status {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ SIDEBAR ══ -->
+<nav id="sidebar">
+  <div class="sb-logo">
+    <div class="logo-title"><span class="logo-dot"></span>Asteroid Impact<br>Simulator</div>
+    <div class="logo-sub">v2.0 · NASA NeoWs API</div>
+  </div>
+
+  <div class="sb-section">
+    <button class="sb-item active" onclick="nav('simulate')"><span class="icon">🏠</span> Dashboard</button>
+    <button class="sb-item"        onclick="nav('simulate')"><span class="icon">💥</span> Nieuwe simulatie</button>
+    <button class="sb-item"        onclick="nav('history')"> <span class="icon">🕐</span> Simulatie historie</button>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-section-label">Data</div>
+    <button class="sb-item" onclick="nav('asteroids')"><span class="icon">☄</span> Asteroïden</button>
+    <button class="sb-item" onclick="nav('countries')"> <span class="icon">🌍</span> Landen</button>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-section-label">Acties</div>
+    <button class="sb-item" onclick="doRefreshCache()"><span class="icon">🔄</span> API Cache</button>
+    <button class="sb-item" onclick="nav('about')">    <span class="icon">ℹ</span> Over</button>
+  </div>
+
+  <div class="sb-status">
+    <div class="sb-status-title">System Status</div>
+    <div class="sb-status-row"><span class="label">API Status</span>    <span class="val" id="ss-api">—</span></div>
+    <div class="sb-status-row"><span class="label">Asteroid cache</span><span class="val" id="ss-cache">—</span></div>
+    <div class="sb-status-row"><span class="label">Database</span>      <span class="val" id="ss-db">—</span></div>
+    <div class="sb-status-row"><span class="label">REST Countries</span><span class="val" id="ss-rest">—</span></div>
+  </div>
+</nav>
+
+<!-- ══ MAIN ══ -->
+<div id="main">
+  <div id="topbar">
+    <h1 id="page-title">Nieuwe Impact Simulatie</h1>
+    <span class="sub" id="page-sub">Kies een asteroïde en een land om een inslag te simuleren</span>
+    <button class="btn btn-primary btn-sm" onclick="nav('simulate')">+ Nieuwe simulatie</button>
+    <button class="btn btn-ghost btn-sm"   onclick="doRefreshCache()">↺ API Cache</button>
+  </div>
+
+  <!-- ══ SIMULATE PAGE ══ -->
+  <div class="page active" id="page-simulate">
+
+    <div class="form-map-split">
+      <!-- Linker kolom: formulier -->
+      <div style="display:flex; flex-direction:column; gap:1rem;">
+
+        <!-- Stap 1: Asteroïde -->
+        <div class="card">
+          <div class="card-header">
+            <h3>☄ 1. Kies een Near Earth Object</h3>
+            <button class="btn btn-ghost btn-sm" onclick="pickRandomAsteroid()">↺ Willekeurig</button>
+          </div>
+          <div class="card-body">
+            <input type="text" class="select-search" id="astro-search" placeholder="🔍 Zoek op naam..."
+              oninput="filterDropdown('astro')" onfocus="openDropdown('astro')" autocomplete="off">
+            <div class="dropdown-list" id="astro-list"></div>
+            <div class="selection-info" id="astro-info">
+              <div class="si-name" id="astro-info-naam"></div>
+              <div class="si-grid">
+                <div class="si-row"><span class="k">Diameter</span><span class="v" id="astro-info-diam"></span></div>
+                <div class="si-row"><span class="k">Snelheid</span><span class="v" id="astro-info-snel"></span></div>
+                <div class="si-row"><span class="k">Massa</span>   <span class="v" id="astro-info-mass"></span></div>
+                <div class="si-row"><span class="k">Gevaar</span>  <span class="v" id="astro-info-gevaar"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stap 2: Land -->
+        <div class="card">
+          <div class="card-header">
+            <h3>🌍 2. Kies een land</h3>
+            <button class="btn btn-ghost btn-sm" onclick="pickRandomCountry()">↺ Willekeurig</button>
+          </div>
+          <div class="card-body">
+            <input type="text" class="select-search" id="land-search" placeholder="🔍 Zoek op naam..."
+              oninput="filterDropdown('land')" onfocus="openDropdown('land')" autocomplete="off">
+            <div class="dropdown-list" id="land-list"></div>
+            <div class="selection-info" id="land-info">
+              <div class="si-name" id="land-info-naam"></div>
+              <div class="si-grid">
+                <div class="si-row"><span class="k">Populatie</span>   <span class="v" id="land-info-pop"></span></div>
+                <div class="si-row"><span class="k">Oppervlakte</span> <span class="v" id="land-info-opp"></span></div>
+                <div class="si-row"><span class="k">Dichtheid</span>   <span class="v" id="land-info-dicht"></span></div>
+                <div class="si-row"><span class="k">Coördinaten</span> <span class="v" id="land-info-coord"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Simuleer knop -->
+        <button class="btn btn-primary" id="sim-btn" onclick="runSimulation()" disabled
+          style="padding:0.85rem; font-size:0.95rem; border-radius:10px;">
+          💥 Simuleer inslag
+        </button>
+      </div>
+
+      <!-- Rechter kolom: kaart -->
+      <div>
+        <div id="world-map"></div>
+        <p class="map-hint">Klik op een land om direct een asteroïde te kiezen</p>
+      </div>
+    </div>
+
+    <!-- Resultaten (initieel verborgen) -->
+    <div id="results-wrap" style="display:none;">
+
+      <!-- Alert -->
+      <div id="alert-banner"></div>
+
+      <!-- Stats row -->
+      <div class="stats-row" id="stats-row">
+        <div class="stat-card">
+          <div class="stat-icon">⚡</div>
+          <div class="stat-val" id="res-energie" style="background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">—</div>
+          <div class="stat-label">Energie (joules)</div>
+          <div class="stat-sub"  id="res-megaton">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <div class="stat-val" id="res-richter" style="color:var(--warning)">—</div>
+          <div class="stat-label">Richter magnitude</div>
+          <div class="stat-sub"  id="res-richter-cat">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📐</div>
+          <div class="stat-val" id="res-radius" style="color:var(--accent)">—</div>
+          <div class="stat-label">Schade radius (km)</div>
+          <div class="stat-sub"  id="res-opp">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">💀</div>
+          <div class="stat-val" id="res-slacht" style="color:var(--danger)">—</div>
+          <div class="stat-label">Verwachte slachtoffers</div>
+          <div class="stat-sub"  id="res-procent">—</div>
+        </div>
+      </div>
+
+      <!-- Zones tabel + Donut + Recente simulaties -->
+      <div class="results-grid">
+
+        <!-- Zones tabel -->
+        <div class="card">
+          <div class="card-header"><h3>📍 Schade per afstand</h3></div>
+          <div style="padding:0.5rem 0;">
+            <table class="zones-table">
+              <thead><tr>
+                <th>Zone</th><th>Radius</th><th>Oppervlak</th><th>Slachtoffers</th>
+              </tr></thead>
+              <tbody id="zones-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Donut -->
+        <div class="card">
+          <div class="card-header"><h3>💀 Slachtoffers uitsplitsing</h3></div>
+          <div class="card-body" style="display:flex;flex-direction:column;align-items:center;">
+            <div class="donut-wrap">
+              <canvas id="donut-chart"></canvas>
+              <div class="donut-center">
+                <div class="dc-val" id="donut-center-val">—</div>
+                <div class="dc-label">Totaal</div>
+              </div>
+            </div>
+            <div id="donut-legend" style="width:100%;max-width:220px;"></div>
+          </div>
+        </div>
+
+        <!-- Recente simulaties -->
+        <div class="card" id="recent-card">
+          <div class="card-header"><h3>🕐 Recente simulaties</h3></div>
+          <div class="card-body-sm" id="recent-list">
+            <div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:1rem;">Nog geen simulaties</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── Krantenartikel sectie ── -->
+      <div id="article-section" style="display:none;">
+        <div class="article-btn-row">
+          <button class="btn-article" id="article-btn" onclick="generateArticle()">
+            📰 Genereer krantenartikel
+          </button>
+          <span class="article-status" id="article-status"></span>
+        </div>
+
+        <div id="article-card" style="display:none; margin-top:1.25rem;">
+          <div class="newspaper-wrap" id="newspaper-wrap">
+            <div class="newspaper-logo">
+              <span class="name">Astro Nieuws</span>
+              <span class="edition" id="article-edition">Fictief artikel</span>
+            </div>
+            <!-- Afbeelding 1 + 2 boven de tekst zodat ze altijd zichtbaar zijn -->
+            <div id="article-img-wrap" class="newspaper-img-wrap" style="display:none;">
+              <div class="newspaper-img-loading" id="article-img-loading">
+                <div class="spinner"></div> Inslags-impressie genereren via Pollinations.AI...
+              </div>
+              <img id="article-img" src="" alt="Impact afbeelding" style="display:none;"
+                onload="articleImgLoaded()" onerror="articleImgError()">
+              <div class="newspaper-img-caption" id="article-img-caption" style="display:none;"></div>
+            </div>
+
+            <div id="article-city-img-wrap" class="newspaper-img-wrap" style="display:none; margin-top:0.75rem;">
+              <div class="newspaper-img-loading" id="article-city-img-loading">
+                <div class="spinner"></div> Lokale verwoesting genereren via Pollinations.AI...
+              </div>
+              <img id="article-city-img" src="" alt="Stad verwoesting" style="display:none;"
+                onload="articleCityImgLoaded()" onerror="articleCityImgError()">
+              <div class="newspaper-img-caption" id="article-city-img-caption" style="display:none;"></div>
+            </div>
+
+            <div id="article-render" style="margin-top:1rem;"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ HISTORY PAGE ══ -->
+  <div class="page" id="page-history">
+    <div style="margin-bottom:1rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
+      <div>
+        <h2 style="font-size:1.1rem;font-weight:700;">Simulatie Historie</h2>
+        <p style="color:var(--muted);font-size:0.78rem;margin-top:0.2rem;">Alle opgeslagen simulaties uit de database</p>
+      </div>
+    </div>
+    <div id="history-loading" style="color:var(--muted);font-size:0.85rem;padding:1rem;"><div class="spinner"></div> Laden...</div>
+    <div class="table-wrap" id="history-table-wrap" style="display:none;">
+      <table>
+        <thead><tr>
+          <th>Datum</th><th>Asteroïde</th><th>Land</th><th>Magnitude</th>
+          <th>Slachtoffers</th><th>Energie (Mt)</th><th>Extinctie</th>
+        </tr></thead>
+        <tbody id="history-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══ ASTEROIDS PAGE ══ -->
+  <div class="page" id="page-asteroids">
+    <div style="margin-bottom:1rem;">
+      <h2 style="font-size:1.1rem;font-weight:700;">Near-Earth Objects</h2>
+      <p style="color:var(--muted);font-size:0.78rem;margin-top:0.2rem;">Live data van de NASA NeoWs API</p>
+    </div>
+    <div class="tbl-controls">
+      <input type="text" class="tbl-search" id="atbl-search" placeholder="Zoek op naam of ID..." oninput="filterTbl('a')">
+      <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.78rem;color:var(--muted);cursor:pointer;">
+        <input type="checkbox" id="a-danger-only" onchange="filterTbl('a')"> Alleen gevaarlijk
+      </label>
+      <select class="rows-sel" onchange="changePS('a',this.value)">
+        <option value="10">10/pagina</option><option value="25">25/pagina</option><option value="50">50/pagina</option>
+      </select>
+    </div>
+    <div id="atbl-loading" style="padding:1rem;color:var(--muted);"><div class="spinner"></div> Laden...</div>
+    <div class="table-wrap" id="atbl-wrap" style="display:none;">
+      <table><thead><tr>
+        <th onclick="sortTbl('a','id')"           data-col="id">ID <span class="si"></span></th>
+        <th onclick="sortTbl('a','naam')"          data-col="naam">Naam <span class="si"></span></th>
+        <th onclick="sortTbl('a','diameter_min')"  data-col="diameter_min">Min Ø (m) <span class="si"></span></th>
+        <th onclick="sortTbl('a','diameter_max')"  data-col="diameter_max">Max Ø (m) <span class="si"></span></th>
+        <th onclick="sortTbl('a','snelheid')"      data-col="snelheid">Snelheid (km/u) <span class="si"></span></th>
+        <th onclick="sortTbl('a','afstand')"       data-col="afstand">Afstand (km) <span class="si"></span></th>
+        <th onclick="sortTbl('a','gevaarlijk')"    data-col="gevaarlijk">Gevaarlijk <span class="si"></span></th>
+        <th>Selecteer</th>
+      </tr></thead>
+      <tbody id="atbl-body"></tbody></table>
+      <div class="pagination" id="atbl-pag"></div>
+    </div>
+  </div>
+
+  <!-- ══ COUNTRIES PAGE ══ -->
+  <div class="page" id="page-countries">
+    <div style="margin-bottom:1rem;">
+      <h2 style="font-size:1.1rem;font-weight:700;">Landen overzicht</h2>
+      <p style="color:var(--muted);font-size:0.78rem;margin-top:0.2rem;">REST Countries · bevolking via World Bank 2024</p>
+    </div>
+    <div class="tbl-controls">
+      <input type="text" class="tbl-search" id="ctbl-search" placeholder="Zoek op naam..." oninput="filterTbl('c')">
+      <select class="rows-sel" onchange="changePS('c',this.value)">
+        <option value="10">10/pagina</option><option value="25">25/pagina</option><option value="50">50/pagina</option>
+      </select>
+    </div>
+    <div id="ctbl-loading" style="padding:1rem;color:var(--muted);"><div class="spinner"></div> Laden...</div>
+    <div class="table-wrap" id="ctbl-wrap" style="display:none;">
+      <table><thead><tr>
+        <th onclick="sortTbl('c','naam')"       data-col="naam">Land <span class="si"></span></th>
+        <th onclick="sortTbl('c','populatie')"  data-col="populatie">Populatie <span class="si"></span></th>
+        <th onclick="sortTbl('c','oppervlakte')"data-col="oppervlakte">Opp. (km²) <span class="si"></span></th>
+        <th onclick="sortTbl('c','dichtheid')"  data-col="dichtheid">Dichtheid <span class="si"></span></th>
+        <th>Selecteer</th>
+      </tr></thead>
+      <tbody id="ctbl-body"></tbody></table>
+      <div class="pagination" id="ctbl-pag"></div>
+    </div>
+  </div>
+
+  <!-- ══ ABOUT PAGE ══ -->
+  <div class="page" id="page-about">
+    <div class="card" style="max-width:600px;">
+      <div class="card-header"><h3>ℹ Over ASTRO-impact</h3></div>
+      <div class="card-body" style="font-size:0.85rem;line-height:1.7;color:var(--muted);">
+        <p><strong style="color:var(--text)">ASTRO-impact</strong> is een interactieve asteroïde-impact simulator gebouwd met Python/Flask.</p>
+        <br>
+        <p><strong style="color:var(--text)">Databronnen</strong></p>
+        <p>• NASA NeoWs API – Near-Earth Object data</p>
+        <p>• REST Countries API – oppervlakte &amp; landcoördinaten</p>
+        <p>• World Bank API – actuele bevolkingscijfers (2024)</p>
+        <p>• CartoDB – kaart tegels</p>
+        <br>
+        <p><strong style="color:var(--text)">Formules</strong></p>
+        <p>• Kinetische energie: E = ½mv² (dichtheid steen 3000 kg/m³)</p>
+        <p>• Impactzones: geschaald vanuit Hiroshima (63 TJ, 1.4 km lethal radius)</p>
+        <p>• Magnitude: M = (log₁₀(E) − 4.8) / 1.5</p>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ══ ASTEROID MODAL ══ -->
+<div class="modal-overlay" id="asteroid-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h3>☄ Kies een asteroïde voor <span id="modal-country-name"></span></h3>
+        <div class="meta" id="modal-country-meta"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-search">
+      <input type="text" id="modal-search" placeholder="🔍 Zoek op naam of ID..."
+        oninput="renderModal(this.value)">
+    </div>
+    <div class="modal-list" id="modal-list"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════ STATE ════════════════════════════════════
+const S = {
+  asteroids: { all: [], filtered: [], page: 1, ps: 10, col: null, dir: 'asc' },
+  countries: { all: [], filtered: [], page: 1, ps: 10, col: null, dir: 'asc' },
+  sel: { asteroid: null, country: null },
+  map: { init: false, geolayer: null, selLayer: null, byCode: {}, impactCircles: [] },
+  donutChart: null,
+  modalCountry: null,
+  lastSimulationId: null,
+};
+
+// ═══════════════════════════════ INIT ═════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  loadStatus();
+  ensureAsteroids();
+  ensureCountries().then(() => initMap());
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#astro-search') && !e.target.closest('#astro-list'))
+    document.getElementById('astro-list').classList.remove('open');
+  if (!e.target.closest('#land-search') && !e.target.closest('#land-list'))
+    document.getElementById('land-list').classList.remove('open');
+});
+
+// ═══════════════════════════════ NAVIGATIE ════════════════════════════════
+const PAGE_TITLES = {
+  simulate:  ['Nieuwe Impact Simulatie', 'Kies een asteroïde en land om een inslag te simuleren'],
+  history:   ['Simulatie Historie', 'Alle opgeslagen simulaties uit de database'],
+  asteroids: ['Near-Earth Objects', 'Live data van de NASA NeoWs API'],
+  countries: ['Landen overzicht', 'REST Countries · World Bank 2024'],
+  about:     ['Over ASTRO-impact', ''],
+};
+
+function nav(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sb-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  const [t, s] = PAGE_TITLES[page] || ['', ''];
+  document.getElementById('page-title').textContent = t;
+  document.getElementById('page-sub').textContent = s;
+  if (page === 'history')   loadHistory();
+  if (page === 'asteroids') renderATbl();
+  if (page === 'countries') renderCTbl();
+  // Markeer sidebar item
+  const labels = ['simulate','simulate','history','asteroids','countries','simulate','about'];
+  document.querySelectorAll('.sb-item').forEach((b,i) => { if(labels[i]===page) b.classList.add('active'); });
+}
+
+// ═══════════════════════════════ STATUS BAR ═══════════════════════════════
+async function loadStatus() {
+  try {
+    const [ar, dbr] = await Promise.all([
+      fetch('/api/asteroids').then(r=>r.json()),
+      fetch('/api/db/status').then(r=>r.json()),
+    ]);
+    document.getElementById('ss-api').innerHTML   = ar.data ? '<span class="dot-ok">● Online</span>' : '<span class="dot-err">● Fout</span>';
+    document.getElementById('ss-db').innerHTML    = dbr.ok  ? '<span class="dot-ok">● OK</span>'    : '<span class="dot-err">● Fout</span>';
+    document.getElementById('ss-rest').innerHTML  = '<span class="dot-ok">● OK</span>';
+    if (ar.data) {
+      S.asteroids.all = ar.data;
+      S.asteroids.filtered = ar.data;
+      document.getElementById('ss-cache').textContent = new Date().toLocaleDateString('nl-NL');
+    }
+  } catch(e) {
+    document.getElementById('ss-api').innerHTML = '<span class="dot-err">● Fout</span>';
+  }
+}
+
+// ═══════════════════════════════ DATA LADEN ═══════════════════════════════
+async function ensureAsteroids() {
+  if (S.asteroids.all.length) return;
+  const r = await fetch('/api/asteroids').then(r=>r.json());
+  if (r.data) { S.asteroids.all = r.data; S.asteroids.filtered = r.data; }
+}
+
+async function ensureCountries() {
+  if (S.countries.all.length) return;
+  const r = await fetch('/api/countries').then(r=>r.json());
+  if (r.data) { S.countries.all = r.data; S.countries.filtered = r.data; }
+}
+
+// ═══════════════════════════════ DROPDOWN SELECTIE ════════════════════════
+function openDropdown(type) {
+  const listId = type === 'astro' ? 'astro-list' : 'land-list';
+  document.getElementById(listId).classList.add('open');
+  filterDropdown(type);
+}
+
+function filterDropdown(type) {
+  const isAstro = type === 'astro';
+  const q = document.getElementById(isAstro ? 'astro-search' : 'land-search').value.toLowerCase();
+  const items = isAstro ? S.asteroids.all : S.countries.all;
+  const nameKey = isAstro ? 'naam' : 'naam';
+  const filtered = items.filter(x => x.naam.toLowerCase().includes(q) || (isAstro && x.id?.includes(q)));
+  const listEl = document.getElementById(isAstro ? 'astro-list' : 'land-list');
+  listEl.classList.add('open');
+  listEl.innerHTML = filtered.slice(0, 50).map(x => `
+    <div class="dropdown-item" onclick='${isAstro ? `selectAsteroid(${JSON.stringify(x)})` : `selectCountry(${JSON.stringify(x)})`}'>
+      ${isAstro ? (x.gevaarlijk ? '☄ ' : '🪨 ') : '🌍 '}${x.naam}
+      ${isAstro && x.gevaarlijk ? ' <span class="badge b-danger" style="float:right;font-size:0.65rem">⚠</span>' : ''}
+    </div>`).join('') || '<div class="dropdown-item" style="color:var(--muted)">Geen resultaten</div>';
+}
+
+function selectAsteroid(a) {
+  S.sel.asteroid = a;
+  document.getElementById('astro-search').value = a.naam;
+  document.getElementById('astro-list').classList.remove('open');
+  const info = document.getElementById('astro-info');
+  info.classList.add('visible');
+  document.getElementById('astro-info-naam').textContent = a.naam;
+  document.getElementById('astro-info-diam').textContent = `${fmt(a.diameter_min)}–${fmt(a.diameter_max)} m`;
+  document.getElementById('astro-info-snel').textContent = `${fmt(a.snelheid)} km/u`;
+  document.getElementById('astro-info-mass').textContent = a.massa_kg ? humanize(a.massa_kg) + ' kg' : '—';
+  document.getElementById('astro-info-gevaar').innerHTML = a.gevaarlijk
+    ? '<span class="badge-danger-sm">Gevaarlijk</span>' : '<span class="badge-ok-sm">Veilig</span>';
+  updateSimBtn();
+  toast('Asteroïde: ' + a.naam);
+}
+
+function selectCountry(c) {
+  S.sel.country = c;
+  document.getElementById('land-search').value = c.naam;
+  document.getElementById('land-list').classList.remove('open');
+  const info = document.getElementById('land-info');
+  info.classList.add('visible');
+  document.getElementById('land-info-naam').textContent = c.naam;
+  document.getElementById('land-info-pop').textContent   = fmt(c.populatie) + ' mensen';
+  document.getElementById('land-info-opp').textContent   = fmt(c.oppervlakte) + ' km²';
+  document.getElementById('land-info-dicht').textContent = c.dichtheid + ' p/km²';
+  document.getElementById('land-info-coord').textContent = c.lat ? `${c.lat.toFixed(1)}°, ${c.lng.toFixed(1)}°` : '—';
+  updateSimBtn();
+  highlightCountry(c);
+  toast('Land: ' + c.naam);
+}
+
+function updateSimBtn() {
+  document.getElementById('sim-btn').disabled = !(S.sel.asteroid && S.sel.country);
+}
+
+async function pickRandomAsteroid() {
+  await ensureAsteroids();
+  const a = S.asteroids.all[Math.floor(Math.random() * S.asteroids.all.length)];
+  selectAsteroid(a);
+}
+
+async function pickRandomCountry() {
+  await ensureCountries();
+  const c = S.countries.all[Math.floor(Math.random() * S.countries.all.length)];
+  selectCountry(c);
+}
+
+// ═══════════════════════════════ KAART ════════════════════════════════════
+let worldMap = null, geojsonLayer = null;
+
+function fixAntimeridian(geojson) {
+  // Rusland en andere landen die de 180°-meridiaan oversteken veroorzaken
+  // een horizontale lijn door de hele kaart in Leaflet. Dit wordt opgelost
+  // door de coördinaten per ring te normaliseren: als twee opeenvolgende
+  // punten meer dan 180° van elkaar liggen, is er een antimeridian-oversteek.
+  function fixRing(ring) {
+    for (let i = 1; i < ring.length; i++) {
+      const diff = ring[i][0] - ring[i - 1][0];
+      if (diff >  180) ring[i][0] -= 360;
+      if (diff < -180) ring[i][0] += 360;
+    }
+  }
+  geojson.features.forEach(f => {
+    if (!f.geometry) return;
+    const t = f.geometry.type;
+    if (t === 'Polygon')      f.geometry.coordinates.forEach(fixRing);
+    if (t === 'MultiPolygon') f.geometry.coordinates.forEach(p => p.forEach(fixRing));
+  });
+  return geojson;
+}
+
+async function initMap() {
+  if (S.map.init) return;
+  S.map.init = true;
+
+  await ensureCountries();
+  S.countries.all.forEach(c => {
+    const code = parseInt(c.ccn3);
+    if (!isNaN(code)) S.map.byCode[code] = c;
+  });
+
+  worldMap = L.map('world-map', { center: [20, 0], zoom: 2, minZoom: 1, maxZoom: 7, zoomControl: true });
+
+  // Laag 1: Esri satellietfoto (gratis, geen API-sleutel)
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {
+      attribution: 'Tiles &copy; Esri &mdash; Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
+      maxZoom: 18,
+    }
+  ).addTo(worldMap);
+
+  // Laag 2: Esri landsgrenzen + plaatsnamen over de satelliet
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 18, opacity: 0.9 }
+  ).addTo(worldMap);
+
+  try {
+    const topo = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r => r.json());
+    const geo  = fixAntimeridian(topojson.feature(topo, topo.objects.countries));
+    const tt   = L.tooltip({ sticky: true, className: 'map-tooltip', opacity: 1 });
+
+    // Basisstijl: transparante vulling zodat satelliet doorschijnt, witte grenzen
+    const baseStyle = { fillColor: '#ffffff', fillOpacity: 0, color: '#ffffff', weight: 0.8, opacity: 0.5 };
+
+    geojsonLayer = L.geoJSON(geo, {
+      style: () => ({ ...baseStyle }),
+      onEachFeature: (feat, layer) => {
+        const c = S.map.byCode[feat.id];
+        layer.on('mouseover', e => {
+          if (layer !== S.map.selLayer)
+            layer.setStyle({ fillColor: '#38bdf8', fillOpacity: 0.25, color: '#ffffff', weight: 1.5, opacity: 1 });
+          const naam = c ? c.naam : '—';
+          const pop  = c ? `<div class="tt-pop">👥 ${fmt(c.populatie)} inwoners</div>` : '';
+          tt.setContent(`<div class="tt-name">${naam}</div>${pop}`);
+          layer.bindTooltip(tt).openTooltip(e.latlng);
+        });
+        layer.on('mousemove', e => tt.setLatLng(e.latlng));
+        layer.on('mouseout', () => {
+          if (layer !== S.map.selLayer) geojsonLayer.resetStyle(layer);
+          layer.closeTooltip();
+        });
+        layer.on('click', () => {
+          if (c) { openModal(c); }
+          else    toast('Geen landdata beschikbaar', true);
+        });
+        layer._c = c;
+      },
+    }).addTo(worldMap);
+  } catch(e) { console.error('Kaart fout', e); }
+}
+
+function highlightCountry(c) {
+  if (!geojsonLayer) return;
+  if (S.map.selLayer) { geojsonLayer.resetStyle(S.map.selLayer); S.map.selLayer = null; }
+  geojsonLayer.eachLayer(l => {
+    if (l._c && l._c.naam === c.naam) {
+      l.setStyle({ fillColor:'#f59e0b', fillOpacity:0.45, color:'#f59e0b', weight:2.5, opacity:1 });
+      S.map.selLayer = l;
+      try { worldMap.fitBounds(l.getBounds(), { padding:[30,30], maxZoom:5 }); } catch(e){}
+    }
+  });
+}
+
+function drawImpactCircles(lat, lng, zones) {
+  // Verwijder vorige cirkels
+  S.map.impactCircles.forEach(c => worldMap.removeLayer(c));
+  S.map.impactCircles = [];
+
+  // Teken van groot naar klein (zodat kleine ringen bovenop liggen)
+  const order = ['seismisch','lichte_schade','thermisch','matige_vern','zware_vern','vuurbal'];
+  order.forEach(key => {
+    const z = zones[key];
+    const circle = L.circle([lat, lng], {
+      radius: z.radius_km * 1000,
+      color: z.kleur, weight: 1.5,
+      fillColor: z.kleur, fillOpacity: key === 'vuurbal' ? 0.45 : 0.07,
+    }).addTo(worldMap);
+    circle.bindTooltip(`${z.label}: ${fmt(z.radius_km)} km`, { sticky: true, className: 'map-tooltip' });
+    S.map.impactCircles.push(circle);
+  });
+
+  // Marker op het impactpunt
+  const impactIcon = L.divIcon({
+    html: '<div style="width:14px;height:14px;background:#ef4444;border:2px solid #fff;border-radius:50%;box-shadow:0 0 10px #ef4444"></div>',
+    className: '', iconAnchor: [7, 7],
+  });
+  const marker = L.marker([lat, lng], { icon: impactIcon })
+    .addTo(worldMap)
+    .bindTooltip('Impactlocatie', { className: 'map-tooltip' });
+  S.map.impactCircles.push(marker);
+
+  worldMap.setView([lat, lng], 4);
+}
+
+// ═══════════════════════════════ MODAL ════════════════════════════════════
+function openModal(c) {
+  S.modalCountry = c;
+  document.getElementById('modal-country-name').textContent = c.naam;
+  document.getElementById('modal-country-meta').textContent = `👥 ${fmt(c.populatie)} · 📐 ${fmt(c.oppervlakte)} km²`;
+  document.getElementById('modal-search').value = '';
+  renderModal('');
+  document.getElementById('asteroid-modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('asteroid-modal').classList.remove('open');
+}
+
+function renderModal(q) {
+  q = q.toLowerCase();
+  const filtered = S.asteroids.all.filter(a => a.naam.toLowerCase().includes(q) || a.id.includes(q));
+  document.getElementById('modal-list').innerHTML = filtered.length
+    ? filtered.map(a => `
+        <div class="mai" onclick='selectFromModal(${JSON.stringify(a)})'>
+          <span class="mai-icon">${a.gevaarlijk ? '☄' : '🪨'}</span>
+          <div class="mai-info">
+            <div class="mai-name">${a.naam}</div>
+            <div class="mai-meta">Ø ${fmt(a.diameter_min)}–${fmt(a.diameter_max)} m · ${fmt(a.snelheid)} km/u</div>
+          </div>
+          ${a.gevaarlijk ? '<span class="badge b-danger">Gevaarlijk</span>' : '<span class="badge b-ok">Veilig</span>'}
+        </div>`).join('')
+    : '<div style="padding:1.5rem;text-align:center;color:var(--muted)">Geen resultaten</div>';
+}
+
+function selectFromModal(a) {
+  selectAsteroid(a);
+  selectCountry(S.modalCountry);
+  closeModal();
+  document.getElementById('sim-btn').scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+// ═══════════════════════════════ SIMULATIE ════════════════════════════════
+async function runSimulation() {
+  const { asteroid, country } = S.sel;
+  if (!asteroid || !country) return;
+
+  document.getElementById('sim-btn').textContent = '⏳ Berekenen...';
+  document.getElementById('sim-btn').disabled = true;
+
+  try {
+    const r = await fetch('/api/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ asteroid_id: asteroid.id, country_name: country.naam }),
+    }).then(r => r.json());
+
+    if (r.error) throw new Error(r.error);
+    renderResults(r);
+    loadRecent();
+  } catch(e) {
+    toast('Fout: ' + e.message, true);
+  } finally {
+    document.getElementById('sim-btn').textContent = '💥 Simuleer inslag';
+    document.getElementById('sim-btn').disabled = false;
+  }
+}
+
+function renderResults(r) {
+  document.getElementById('results-wrap').style.display = 'block';
+
+  // Sla simulation_id op en toon artikel-knop
+  if (r.simulation_id) {
+    S.lastSimulationId = r.simulation_id;
+    const art = document.getElementById('article-section');
+    const btn = document.getElementById('article-btn');
+
+    // Reset artikel-sectie bij nieuwe simulatie
+    document.getElementById('article-card').style.display = 'none';
+    document.getElementById('article-render').innerHTML = '';
+    document.getElementById('article-status').textContent = '';
+    document.getElementById('article-img-wrap').style.display = 'none';
+    document.getElementById('article-city-img-wrap').style.display = 'none';
+
+    const slZoneTotaal = (r.slachtoffers_zones?.direct || 0) + (r.slachtoffers_zones?.thermisch || 0)
+                       + (r.slachtoffers_zones?.shockgolf || 0) + (r.slachtoffers_zones?.seismisch || 0)
+                       + (r.slachtoffers_zones?.overig || 0);
+    const isExtinctie = r.chicxulub?.extinction_event || slZoneTotaal >= 2_000_000_000;
+
+    art.style.display = 'block';
+    if (isExtinctie) {
+      btn.textContent = '📡 Noodtransmissie genereren';
+      btn.style.background = 'linear-gradient(135deg,#3d0000,#700)';
+    } else {
+      btn.textContent = '📰 Genereer krantenartikel';
+      btn.style.background = '';
+    }
+    btn.disabled = false;
+  }
+
+  // Alert — gebaseerd op magnitude (Richter) én Chicxulub-verhouding
+  const mag  = r.magnitude;
+  const ext  = r.chicxulub.extinction_event;
+  const ab   = document.getElementById('alert-banner');
+
+  let alertHtml;
+  if (ext || r.chicxulub.ratio >= 1) {
+    alertHtml = `<div class="alert alert-ext">💀 EXTINCTIE-EVENEMENT — ${r.chicxulub.ratio.toFixed(2)}× krachtiger dan de Chicxulub-inslag die de dinosaurussen uitroeide. Alle leven op aarde zou worden vernietigd.</div>`;
+  } else if (mag >= 10) {
+    alertHtml = `<div class="alert alert-plan">🌍 PLANETAIRE CATASTROFE (M ${mag}) — Tektonische platen verschuiven, continenten veranderen van vorm. Nooit geregistreerd in de menselijke geschiedenis. Niets blijft overeind.</div>`;
+  } else if (mag >= 9) {
+    alertHtml = `<div class="alert alert-plan">☄ VERWOESTENDE INSLAG (M ${mag}) — Totale verwoesting over duizenden km². Tektonische activiteit; seismische golven voelbaar over de hele aarde. Honderdduizenden slachtoffers.</div>`;
+  } else if (mag >= 8) {
+    alertHtml = `<div class="alert alert-sev">⚠ ZEER ZWARE INSLAG (M ${mag}) — Vrijwel alle gebouwen storten in. Vloedgolven tot 40 m hoogte mogelijk. Tienduizenden slachtoffers over een enorm gebied.</div>`;
+  } else if (mag >= 7) {
+    alertHtml = `<div class="alert alert-kra">⚡ ZWARE INSLAG (M ${mag}) — Massale verwoesting; alleen versterkte gebouwen overleven. Grondverschuivingen en aardverschuivingen. Duizenden doden.</div>`;
+  } else if (mag >= 6) {
+    alertHtml = `<div class="alert alert-kra">⚡ KRACHTIGE INSLAG (M ${mag}) — Wijdverspreide gebouwschade; honderden slachtoffers mogelijk. Kusttsunami's kunnen optreden.</div>`;
+  } else {
+    alertHtml = `<div class="alert alert-mod">ℹ Matige inslag (M ${mag}) — Lokale schade en vernietiging. Beperkt tot de directe impactzone.</div>`;
+  }
+  ab.innerHTML = alertHtml;
+
+  // Stats
+  document.getElementById('res-energie').textContent    = r.energie.joules_leesbaar;
+  document.getElementById('res-megaton').textContent    = `${r.energie.megaton_tnt.toLocaleString('nl-NL')} Mt TNT`;
+  document.getElementById('res-richter').textContent    = r.magnitude;
+  document.getElementById('res-richter-cat').textContent = r.richter ? r.richter.label : '—';
+  const maxRadius = r.zones ? r.zones.lichte_schade.radius_km : '—';
+  document.getElementById('res-radius').textContent     = fmt(maxRadius);
+  document.getElementById('res-opp').textContent        = `${fmt(r.schade.vernietigde_oppervlakte)} km²`;
+  const sl = r.schade.wereldbevolking_vernietigd ? 'Vrijwel gehele wereldbevolking' : humanize(r.schade.slachtoffers);
+  document.getElementById('res-slacht').textContent     = sl;
+  document.getElementById('res-procent').textContent    = `${r.schade.procent_van_land.toFixed(1)}% van ${r.land.naam}`;
+
+  // Impact cirkels op kaart
+  if (r.zones && r.land.lat && r.land.lng) {
+    drawImpactCircles(r.land.lat, r.land.lng, r.zones);
+  }
+
+  // Zones tabel
+  if (r.zones) {
+    const zl = [
+      { key:'vuurbal',       sl: Math.round((r.slachtoffers_zones?.direct || 0) * 0.1) },
+      { key:'zware_vern',    sl: Math.round((r.slachtoffers_zones?.direct || 0) * 0.9) },
+      { key:'thermisch',     sl: r.slachtoffers_zones?.thermisch || 0 },
+      { key:'matige_vern',   sl: r.slachtoffers_zones?.shockgolf || 0 },
+      { key:'lichte_schade', sl: Math.round((r.slachtoffers_zones?.shockgolf || 0) * 0.2) },
+      { key:'seismisch',     sl: r.slachtoffers_zones?.seismisch || 0 },
+    ];
+    document.getElementById('zones-tbody').innerHTML = zl.map(z => {
+      const zd = r.zones[z.key];
+      return `<tr>
+        <td><span class="zone-dot" style="background:${zd.kleur}"></span>${zd.label}</td>
+        <td>${fmt(zd.radius_km)} km</td>
+        <td>${fmt(zd.area_km2)} km²</td>
+        <td style="color:var(--danger)">${humanize(z.sl)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Donut chart
+  if (r.slachtoffers_zones) {
+    renderDonut(r.slachtoffers_zones, r.schade.slachtoffers);
+  }
+
+  document.getElementById('results-wrap').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function renderDonut(sl, totaal) {
+  const labels = ['Direct', 'Thermisch', 'Shockgolf', 'Seismisch', 'Overig'];
+  const vals   = [sl.direct, sl.thermisch, sl.shockgolf, sl.seismisch, sl.overig];
+  const colors = ['#ef4444','#f97316','#f59e0b','#3b82f6','#8b5cf6'];
+
+  if (S.donutChart) S.donutChart.destroy();
+  const ctx = document.getElementById('donut-chart').getContext('2d');
+  S.donutChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: vals, backgroundColor: colors, borderWidth: 0, hoverOffset: 4 }] },
+    options: {
+      cutout: '68%', responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => ` ${ctx.label}: ${humanize(ctx.raw)} (${((ctx.raw/sl.totaal)*100).toFixed(1)}%)` }
+      }},
+    },
+  });
+
+  document.getElementById('donut-center-val').textContent = humanize(sl.totaal);
+
+  document.getElementById('donut-legend').innerHTML = labels.map((l,i) => `
+    <div class="legend-item">
+      <span class="legend-dot" style="background:${colors[i]}"></span>
+      <span>${l}</span>
+      <span class="legend-val">${humanize(vals[i])}</span>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════ RECENTE SIMULATIES ═══════════════════════
+async function loadRecent() {
+  try {
+    const r = await fetch('/api/simulations?limit=5').then(r=>r.json());
+    if (!r.data || !r.data.length) return;
+    const colors = ['#ef4444','#f97316','#3b82f6','#22c55e','#8b5cf6'];
+    document.getElementById('recent-list').innerHTML = r.data.map((s, i) => `
+      <div class="sim-history-item">
+        <div class="shi-icon" style="background:${colors[i%5]}22;color:${colors[i%5]}">☄</div>
+        <div class="shi-info">
+          <div class="shi-title">${s.asteroid_naam}</div>
+          <div class="shi-sub">→ ${s.land_naam}</div>
+        </div>
+        <div class="shi-val">
+          <div class="shi-mag" style="color:var(--warning)">M ${s.magnitude}</div>
+          <div class="shi-date">${humanize(s.slachtoffers)}</div>
+        </div>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+// ═══════════════════════════════ HISTORY PAGE ════════════════════════════
+async function loadHistory() {
+  document.getElementById('history-loading').style.display = 'block';
+  document.getElementById('history-table-wrap').style.display = 'none';
+  try {
+    const r = await fetch('/api/simulations?limit=100').then(r=>r.json());
+    document.getElementById('history-loading').style.display = 'none';
+    if (!r.data?.length) {
+      document.getElementById('history-table-wrap').style.display = 'block';
+      document.getElementById('history-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Geen simulaties gevonden</td></tr>';
+      return;
+    }
+    document.getElementById('history-table-wrap').style.display = 'block';
+    document.getElementById('history-tbody').innerHTML = r.data.map(s => `
+      <tr>
+        <td style="color:var(--muted);font-size:0.75rem">${s.created_at}</td>
+        <td style="font-weight:600">${s.asteroid_naam}</td>
+        <td>${s.land_naam}</td>
+        <td style="color:var(--warning);font-weight:700">${s.magnitude}</td>
+        <td style="color:var(--danger)">${humanize(s.slachtoffers)}</td>
+        <td>${s.energie_megaton?.toLocaleString('nl-NL')} Mt</td>
+        <td>${s.extinction_event ? '<span class="badge b-danger">Ja</span>' : '<span class="badge b-ok">Nee</span>'}</td>
+      </tr>`).join('');
+  } catch(e) {
+    document.getElementById('history-loading').innerHTML = '<span style="color:var(--danger)">Fout: ' + e.message + '</span>';
+  }
+}
+
+// ═══════════════════════════════ TABELLEN ════════════════════════════════
+function filterTbl(type) {
+  if (type==='a') {
+    const q = document.getElementById('atbl-search').value.toLowerCase();
+    const danger = document.getElementById('a-danger-only').checked;
+    S.asteroids.filtered = S.asteroids.all.filter(a =>
+      (a.naam.toLowerCase().includes(q) || a.id.includes(q)) && (!danger || a.gevaarlijk));
+    S.asteroids.page = 1;
+    renderATbl();
+  } else {
+    const q = document.getElementById('ctbl-search').value.toLowerCase();
+    S.countries.filtered = S.countries.all.filter(c => c.naam.toLowerCase().includes(q));
+    S.countries.page = 1;
+    renderCTbl();
+  }
+}
+
+function sortTbl(type, col) {
+  const s = type==='a' ? S.asteroids : S.countries;
+  s.dir = s.col===col && s.dir==='asc' ? 'desc' : 'asc';
+  s.col = col;
+  const d = s.dir==='asc' ? 1 : -1;
+  s.filtered.sort((a,b) => typeof a[col]==='number' ? (a[col]-b[col])*d : String(a[col]).localeCompare(String(b[col]))*d);
+  s.page = 1;
+  if (type==='a') renderATbl(); else renderCTbl();
+}
+
+function changePS(type, val) {
+  if (type==='a') { S.asteroids.ps = parseInt(val); S.asteroids.page=1; renderATbl(); }
+  else             { S.countries.ps = parseInt(val); S.countries.page=1; renderCTbl(); }
+}
+
+function renderATbl() {
+  document.getElementById('atbl-loading').style.display = 'none';
+  document.getElementById('atbl-wrap').style.display = 'block';
+  const { filtered, page, ps } = S.asteroids;
+  const slice = filtered.slice((page-1)*ps, page*ps);
+  document.getElementById('atbl-body').innerHTML = slice.map(a => `
+    <tr>
+      <td style="color:var(--muted);font-family:monospace;font-size:0.75rem">${a.id}</td>
+      <td style="font-weight:600">${a.naam}</td>
+      <td>${fmt(a.diameter_min)}</td><td>${fmt(a.diameter_max)}</td>
+      <td>${fmt(a.snelheid)}</td><td>${fmt(a.afstand)}</td>
+      <td>${a.gevaarlijk ? '<span class="badge b-danger">Ja</span>' : '<span class="badge b-ok">Nee</span>'}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick='selectAsteroid(${JSON.stringify(a)});nav("simulate")'>Kies</button></td>
+    </tr>`).join('');
+  pag('atbl', filtered.length, page, ps);
+  updSort('a');
+}
+
+function renderCTbl() {
+  document.getElementById('ctbl-loading').style.display = 'none';
+  document.getElementById('ctbl-wrap').style.display = 'block';
+  const { filtered, page, ps } = S.countries;
+  const slice = filtered.slice((page-1)*ps, page*ps);
+  document.getElementById('ctbl-body').innerHTML = slice.map(c => `
+    <tr>
+      <td style="font-weight:600">${c.naam}</td>
+      <td>${fmt(c.populatie)}</td><td>${fmt(c.oppervlakte)}</td>
+      <td>${c.dichtheid.toLocaleString('nl-NL')}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick='selectCountry(${JSON.stringify(c)});nav("simulate")'>Kies</button></td>
+    </tr>`).join('');
+  pag('ctbl', filtered.length, page, ps);
+  updSort('c');
+}
+
+function pag(id, total, page, ps) {
+  const pages = Math.ceil(total/ps);
+  const lo = Math.max(1,page-2), hi = Math.min(pages,page+2);
+  let btns='';
+  if(lo>1) btns+=`<button onclick="gp('${id}',1)">1</button>`;
+  if(lo>2) btns+=`<button disabled>…</button>`;
+  for(let i=lo;i<=hi;i++) btns+=`<button class="${i===page?'active':''}" onclick="gp('${id}',${i})">${i}</button>`;
+  if(hi<pages-1) btns+=`<button disabled>…</button>`;
+  if(hi<pages) btns+=`<button onclick="gp('${id}',${pages})">${pages}</button>`;
+  document.getElementById(id+'-pag').innerHTML=`
+    <span>${(page-1)*ps+1}–${Math.min(page*ps,total)} van ${total}</span>
+    <div class="page-btns">
+      <button onclick="gp('${id}',${page-1})" ${page===1?'disabled':''}>‹</button>
+      ${btns}
+      <button onclick="gp('${id}',${page+1})" ${page===pages?'disabled':''}>›</button>
+    </div>`;
+}
+
+function gp(id, p) {
+  const isA = id==='atbl';
+  const s = isA ? S.asteroids : S.countries;
+  s.page = Math.max(1, Math.min(p, Math.ceil(s.filtered.length/s.ps)));
+  if(isA) renderATbl(); else renderCTbl();
+}
+
+function updSort(type) {
+  const s = type==='a' ? S.asteroids : S.countries;
+  const tbl = type==='a' ? 'atbl-wrap' : 'ctbl-wrap';
+  document.querySelectorAll(`#${tbl} th`).forEach(th => {
+    th.classList.remove('sort-asc','sort-desc');
+    if(th.dataset.col===s.col) th.classList.add(s.dir==='asc'?'sort-asc':'sort-desc');
+  });
+}
+
+// ═══════════════════════════════ CACHE REFRESH ════════════════════════════
+async function doRefreshCache() {
+  toast('Cache vernieuwen...');
+  try {
+    await fetch('/api/cache/refresh', { method:'POST' });
+    toast('Cache vernieuwd! Pagina herladen...');
+    setTimeout(() => location.reload(), 1500);
+  } catch(e) { toast('Fout: ' + e.message, true); }
+}
+
+// ═══════════════════════════════ HELPERS ══════════════════════════════════
+function fmt(n) { return Number(n).toLocaleString('nl-NL'); }
+
+function humanize(n) {
+  n = Number(n);
+  if (n >= 1e9) return (n/1e9).toFixed(2)+' mrd';
+  if (n >= 1e6) return (n/1e6).toFixed(2)+' mln';
+  if (n >= 1e3) return (n/1e3).toFixed(1)+' k';
+  return fmt(n);
+}
+
+function toast(msg, err=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = err ? 'var(--danger)' : 'var(--border)';
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ═══════════════════════════════ KRANTENARTIKEL ═══════════════════════════
+
+function laadArtikelAfbeelding(url, asteroidNaam, landNaam) {
+  const wrap    = document.getElementById('article-img-wrap');
+  const loading = document.getElementById('article-img-loading');
+  const img     = document.getElementById('article-img');
+  const caption = document.getElementById('article-img-caption');
+
+  wrap.style.display = 'block';
+  loading.style.display = 'flex';
+  img.style.display = 'none';
+  caption.style.display = 'none';
+
+  img.src = url;
+  // caption alvast klaarzetten
+  img.dataset.caption = `Impressie van de asteroïde-inslag${landNaam ? ' op ' + landNaam : ''} · AI-gegenereerd via Pollinations.AI (gratis)`;
+}
+
+function articleImgLoaded() {
+  document.getElementById('article-img-loading').style.display = 'none';
+  const img = document.getElementById('article-img');
+  img.style.display = 'block';
+  const caption = document.getElementById('article-img-caption');
+  caption.textContent = img.dataset.caption || 'AI-gegenereerde impressie · Pollinations.AI';
+  caption.style.display = 'block';
+}
+
+function articleImgError() {
+  document.getElementById('article-img-wrap').style.display = 'none';
+}
+
+function laadStadsAfbeelding(url, stad, land) {
+  const wrap    = document.getElementById('article-city-img-wrap');
+  const loading = document.getElementById('article-city-img-loading');
+  const img     = document.getElementById('article-city-img');
+  const caption = document.getElementById('article-city-img-caption');
+
+  wrap.style.display = 'block';
+  loading.style.display = 'flex';
+  img.style.display = 'none';
+  caption.style.display = 'none';
+
+  img.src = url;
+  img.dataset.caption = stad && stad !== land
+    ? `${stad}, ${land} na de inslag · AI-gegenereerde impressie via Pollinations.AI`
+    : `${land} na de inslag · AI-gegenereerde impressie via Pollinations.AI`;
+}
+
+function articleCityImgLoaded() {
+  document.getElementById('article-city-img-loading').style.display = 'none';
+  const img = document.getElementById('article-city-img');
+  img.style.display = 'block';
+  const caption = document.getElementById('article-city-img-caption');
+  caption.textContent = img.dataset.caption || 'Lokale verwoesting · AI-impressie';
+  caption.style.display = 'block';
+}
+
+function articleCityImgError() {
+  document.getElementById('article-city-img-wrap').style.display = 'none';
+}
+
+async function generateArticle() {
+  if (!S.lastSimulationId) { toast('Voer eerst een simulatie uit', true); return; }
+
+  const btn = document.getElementById('article-btn');
+  const status = document.getElementById('article-status');
+  const renderEl = document.getElementById('article-render');
+  const card = document.getElementById('article-card');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Claude schrijft...';
+  status.textContent = '';
+  renderEl.innerHTML = '<span id="article-stream-cursor"></span>';
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  let fullText = '';
+  let buffer = '';
+
+  try {
+    const resp = await fetch('/api/article/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ simulation_id: S.lastSimulationId }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || 'Generatie mislukt');
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = JSON.parse(line.slice(6));
+
+        if (data.error) throw new Error(data.error);
+
+        // Streaming tekst
+        if (data.text) {
+          fullText += data.text;
+          renderEl.innerHTML = marked.parse(fullText) + '<span id="article-stream-cursor"></span>';
+        }
+
+        // Tekst klaar — toon artikel, toon laad-spinners voor beide afbeeldingen
+        if (data.article_done) {
+          renderEl.innerHTML = marked.parse(fullText);
+          btn.textContent = '⏳ Afbeeldingen laden…';
+          btn.disabled = true;
+
+          const edition = document.getElementById('article-edition');
+          edition.textContent = data.demo ? 'Demo-artikel · Fictief' : 'Gegenereerd door Claude Opus · Fictief artikel';
+
+          // Toon beide afbeelding-spinners alvast
+          ['article-img-wrap', 'article-city-img-wrap'].forEach(id => {
+            document.getElementById(id).style.display = 'block';
+          });
+          document.getElementById('article-img-loading').style.display   = 'flex';
+          document.getElementById('article-city-img-loading').style.display = 'flex';
+
+          card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          S._articleMeta = { article_id: data.article_id, demo: data.demo, hoofdstad: data.hoofdstad };
+        }
+
+        // Status-update van de download
+        if (data.img_status) {
+          status.textContent = data.img_status;
+        }
+
+        // Afbeelding 1 klaar
+        if (data.img1_url) {
+          laadArtikelAfbeelding(data.img1_url, S.sel.asteroid?.naam, S.sel.country?.naam);
+        }
+
+        // Afbeelding 2 klaar + alles done
+        if (data.img2_url) {
+          laadStadsAfbeelding(data.img2_url, S._articleMeta?.hoofdstad, S.sel.country?.naam);
+        }
+
+        if (data.done) {
+          btn.textContent = '📰 Opnieuw genereren';
+          btn.disabled = false;
+          const m = S._articleMeta || {};
+          status.textContent = m.demo
+            ? `Demo-artikel #${m.article_id} · Voeg Anthropic API-sleutel toe voor Claude-artikelen`
+            : `Gegenereerd door Claude · Artikel #${m.article_id}`;
+          toast(m.demo ? 'Krantenartikel klaar!' : 'Krantenartikel gegenereerd door Claude!');
+          loadRecent();
+        }
+      }
+    }
+
+  } catch (e) {
+    renderEl.innerHTML = `<p style="color:#e55;font-style:italic">⚠ ${e.message}</p>`;
+    btn.textContent = '📰 Genereer krantenartikel';
+    btn.disabled = false;
+    status.textContent = '';
+    toast('Fout: ' + e.message, true);
+  }
+}
+
+// Laad recente simulaties bij start
+loadRecent();
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# API-sleutels — NOOIT committen
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Lokale cache-bestanden (worden automatisch aangemaakt)
+files/nabije_asteroid.json
+files/landen.json
+files/img/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+nohup.out
