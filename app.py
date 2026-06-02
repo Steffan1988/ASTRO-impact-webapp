@@ -22,6 +22,7 @@ anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
 anthropic_client = anthropic_sdk.Anthropic(api_key=anthropic_api_key) if anthropic_api_key and not anthropic_api_key.startswith("vul_") else None
 
 CHICXULUB_ENERGY          = 1e23
+IMG_MAX_FILES             = 50
 WORLD_POP                 = int(8.2e9)
 BEWOONBAAR_OPPERVLAK      = 104_000_000
 TOTAAL_OPPERVLAKTE_AARDE  = 510_100_000
@@ -53,9 +54,39 @@ DB_CONFIG = {
     "database": "astro_impact",
     "charset": "utf8mb4",
     "cursorclass": pymysql.cursors.DictCursor,
+    "connect_timeout": 10,
 }
 
 app = Flask(__name__)
+
+import gzip as _gzip
+
+@app.after_request
+def add_cache_headers(response):
+    if request.path in ("/api/asteroids", "/api/countries"):
+        response.headers["Cache-Control"] = "public, max-age=3600"
+    return response
+
+
+@app.after_request
+def compress_response(response):
+    if (response.status_code < 200 or response.status_code >= 300
+            or response.direct_passthrough
+            or 'text/event-stream' in response.content_type):
+        return response
+    accept = request.headers.get('Accept-Encoding', '')
+    if 'gzip' not in accept:
+        return response
+    data = response.get_data()
+    if len(data) < 500:
+        return response
+    compressed = _gzip.compress(data, compresslevel=6)
+    if len(compressed) >= len(data):
+        return response
+    response.set_data(compressed)
+    response.headers['Content-Encoding'] = 'gzip'
+    response.headers['Content-Length'] = len(compressed)
+    return response
 
 
 # ── Database ───────────────────────────────────────────────────────────────
@@ -125,8 +156,6 @@ def init_db():
             """)
             # Kolommen toevoegen als ze nog niet bestaan (bestaande databases)
             for col, definition in [
-                ("image_url",       "TEXT AFTER inhoud"),
-                ("city_image_url",  "TEXT AFTER image_url"),
                 ("impact_angle",    "FLOAT DEFAULT 45 AFTER r_seismisch"),
                 ("composition",     "VARCHAR(20) DEFAULT 'stony' AFTER impact_angle"),
                 ("target_type",     "VARCHAR(20) DEFAULT 'rock' AFTER composition"),
@@ -135,11 +164,18 @@ def init_db():
                 ("crater_km",       "FLOAT DEFAULT 0 AFTER airburst_alt_km"),
                 ("city_naam",       "VARCHAR(255) DEFAULT '' AFTER lng"),
             ]:
-                for tbl in ("simulations", "articles"):
-                    try:
-                        cur.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {definition}")
-                    except Exception:
-                        pass
+                try:
+                    cur.execute(f"ALTER TABLE simulations ADD COLUMN {col} {definition}")
+                except Exception:
+                    pass
+            for col, definition in [
+                ("image_url",       "TEXT AFTER inhoud"),
+                ("city_image_url",  "TEXT AFTER image_url"),
+            ]:
+                try:
+                    cur.execute(f"ALTER TABLE articles ADD COLUMN {col} {definition}")
+                except Exception:
+                    pass
         conn.commit()
         conn.close()
         return True
@@ -205,6 +241,21 @@ _POLL_HEADERS = {
 }
 
 
+def _cleanup_img_dir():
+    """Verwijder de oudste bestanden als de img-map boven IMG_MAX_FILES uitkomt."""
+    img_dir = get_img_dir()
+    try:
+        files = sorted(
+            [os.path.join(img_dir, f) for f in os.listdir(img_dir)
+             if os.path.isfile(os.path.join(img_dir, f))],
+            key=os.path.getmtime
+        )
+        while len(files) > IMG_MAX_FILES:
+            os.remove(files.pop(0))
+    except Exception as e:
+        print(f"[img cleanup] {e}")
+
+
 def download_afbeelding(poll_url: str, bestandsnaam: str) -> str:
     """Download één Pollinations.AI afbeelding, sla op, geef lokaal pad terug.
     Val terug op de externe URL als downloaden mislukt."""
@@ -216,6 +267,7 @@ def download_afbeelding(poll_url: str, bestandsnaam: str) -> str:
         if resp.ok and "image" in resp.headers.get("Content-Type", ""):
             with open(lokaal, "wb") as f:
                 f.write(resp.content)
+            _cleanup_img_dir()
             return f"/api/img/{bestandsnaam}"
     except Exception as e:
         print(f"[img download] {bestandsnaam}: {e}")
@@ -377,7 +429,7 @@ def haal_geo_zones(sim: dict) -> dict:
             "https://overpass-api.de/api/interpreter",
             params={"data": query},
             headers={"Accept": "application/json", "User-Agent": "ASTRO-impact/3.0"},
-            timeout=22,
+            timeout=15,
         )
         if not resp.ok:
             return {}
@@ -608,9 +660,9 @@ def bereken_slachtoffers_collins(zones, populatie, dichtheid):
     rls = zones["lichte_schade"]["radius_km"]
 
     # Mortaliteitsfraken per zone (literatuurgebaseerd)
-    sl_direct    = min(schijf(rzv),        populatie) * 0.97   # 138 kPa zone: bijna volledig lethal
-    sl_thermisch = min(schijf(rth,  rzv),  populatie) * 0.55   # thermisch + blast 34 kPa
-    sl_shockgolf = min(schijf(rls,  rth),  populatie) * 0.07   # lichte schade
+    sl_direct    = min(schijf(rzv),                      populatie) * 0.97
+    sl_thermisch = min(max(0.0, schijf(rth, rzv)),       populatie) * 0.55  # clamp: thermisch kan binnen zware vern vallen
+    sl_shockgolf = min(max(0.0, schijf(rls, rth)),       populatie) * 0.07  # clamp: zelfde edge case
     sl_seismisch = min(schijf(rls * 2, rls), populatie) * 0.015
     sl_overig    = (sl_direct + sl_thermisch + sl_shockgolf + sl_seismisch) * 0.06
 
@@ -755,7 +807,7 @@ def simulate():
         try:
             r_usgs = requests.get(
                 "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_month.geojson",
-                timeout=4,
+                timeout=2,
             )
             if r_usgs.ok:
                 feats = r_usgs.json().get("features", [])
@@ -1281,6 +1333,7 @@ def genereer_demo_artikel(sim: dict) -> str:
         )
 
     # Omschrijving van tektonische gevolgen op basis van magnitude
+    rl = f" — *{richter_label}*" if richter_label else ""
     if magnitude >= 10:
         seismische_gevolgen = (
             f"De seismische activiteit bereikte een magnitude van **{magnitude}** — een niveau dat nooit eerder "
@@ -1290,20 +1343,20 @@ def genereer_demo_artikel(sim: dict) -> str:
         )
     elif magnitude >= 9:
         seismische_gevolgen = (
-            f"De seismische activiteit bereikte een magnitude van **{magnitude}** (*{richter_label}*). "
+            f"De seismische activiteit bereikte een magnitude van **{magnitude}**{rl}. "
             f"Op dit niveau verschuiven tektonische platen, kunnen eilandformaties veranderen en zijn de "
             f"seismische golven tot op de andere kant van de aarde voelbaar. "
             f"Kusttsunamis van tientallen meters hoogte worden verwacht."
         )
     elif magnitude >= 8:
         seismische_gevolgen = (
-            f"De seismische activiteit bereikte een magnitude van **{magnitude}** (*{richter_label}*). "
+            f"De seismische activiteit bereikte een magnitude van **{magnitude}**{rl}. "
             f"Vrijwel alle gebouwen in het getroffen gebied zijn ingestort; vloedgolven tot 40 meter "
             f"hoogte zijn mogelijk langs de kustlijn."
         )
     else:
         seismische_gevolgen = (
-            f"De seismische activiteit registreerde een magnitude van **{magnitude}** (*{richter_label}*). "
+            f"De seismische activiteit registreerde een magnitude van **{magnitude}**{rl}. "
             f"De schokgolf was tot op honderden kilometers afstand voelbaar en deed gebouwen instorten "
             f"ver buiten de directe impactzone."
         )
@@ -1359,14 +1412,35 @@ Dit is het laatste bericht van Astro Nieuws. Moge deze transmissie iemand bereik
         f"sloeg in met {sim['energie_megaton']:.0f} megaton TNT — magnitude {magnitude}"
     )
 
+    def fmt_km(r):
+        """Formatteer een radius in km zonder afronding naar 0."""
+        if r >= 10:   return f"{r:.0f}"
+        if r >= 1:    return f"{r:.1f}"
+        if r >= 0.01: return f"{r:.2f}"
+        return "< 0,01"
+
+    airburst     = sim.get("airburst", 0)
+    airburst_alt = sim.get("airburst_alt_km", 0)
+
+    if airburst:
+        impactzone_intro = (
+            f"De **luchtexplosie (airburst) op {airburst_alt:.0f} km hoogte** veroorzaakte complete thermische verwoesting "
+            f"in een straal van **{fmt_km(sim['r_vuurbal'])} km** rondom het hypocenter: "
+            f"**{p_vuurbal}** — alles vloog in brand of verdampte in een flits. "
+        )
+    else:
+        impactzone_intro = (
+            f"De **vuurbal met een straal van {fmt_km(sim['r_vuurbal'])} km** verwoestte volledig: "
+            f"**{p_vuurbal}** — alles verdampte in een fractie van een seconde. "
+        )
+
     verwoesting_alinea = (
-        f"De vuurbal met een straal van **{sim['r_vuurbal']:.0f} km** verwoestte volledig: "
-        f"**{p_vuurbal}** — alles verdampte in een fractie van een seconde. "
-        f"Binnen de zware verwoestingszone (**{sim['r_zware_vern']:.0f} km**) lagen "
+        impactzone_intro
+        + f"Binnen de zware verwoestingszone (**{fmt_km(sim['r_zware_vern'])} km**) lagen "
         f"**{p_zwaar}**; geen enkel gebouw bleef overeind. "
-        f"De matige verwoestingszone (**{sim['r_matige_vern']:.0f} km**) omvatte "
+        f"De matige verwoestingszone (**{fmt_km(sim['r_matige_vern'])} km**) omvatte "
         f"**{p_matig}**, waar houten constructies zijn weggevaagd en zware schade aan betongebouwen werd geregistreerd. "
-        f"De schokgolf was tot op **{sim['r_seismisch']:.0f} km** voelbaar — tot in "
+        f"De schokgolf was tot op **{fmt_km(sim['r_seismisch'])} km** voelbaar — tot in "
         f"**{p_seis}** deden ramen het uit hun sponningen."
     )
 
@@ -1562,4 +1636,4 @@ def serve_img(filename):
 init_db()
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=False, threaded=True, host="0.0.0.0", port=5000)
