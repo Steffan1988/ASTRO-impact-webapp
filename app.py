@@ -338,6 +338,89 @@ def get_valid_landen_cache():
     return cache
 
 
+# ── Geografische helpers ──────────────────────────────────────────────────
+
+def haversine_km(lat1, lng1, lat2, lng2):
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lng2 - lng1)
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlam/2)**2
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+def haal_geo_zones(sim: dict) -> dict:
+    """
+    Vraagt via Overpass API echte steden/dorpen op binnen de grootste schaderadius
+    en groepeert ze per zone op basis van afstand tot het impactpunt.
+    """
+    lat = sim.get("lat", 0)
+    lng = sim.get("lng", 0)
+    if not lat and not lng:
+        return {}
+
+    r_max = max(sim.get("r_seismisch", 0), sim.get("r_lichte_schade", 0))
+    if r_max < 1:
+        return {}
+
+    try:
+        radius_m  = min(int(r_max * 1000), 600_000)
+        r_village = min(radius_m, 80_000)
+        query = (
+            f"[out:json][timeout:20];"
+            f"(node[\"place\"=\"city\"](around:{radius_m},{lat},{lng});"
+            f"node[\"place\"=\"town\"](around:{radius_m},{lat},{lng});"
+            f"node[\"place\"=\"village\"](around:{r_village},{lat},{lng}););"
+            f"out body;"
+        )
+        resp = requests.get(
+            "https://overpass-api.de/api/interpreter",
+            params={"data": query},
+            headers={"Accept": "application/json", "User-Agent": "ASTRO-impact/3.0"},
+            timeout=22,
+        )
+        if not resp.ok:
+            return {}
+
+        prio = {"city": 0, "town": 1, "village": 2}
+        places = []
+        seen = set()
+        for e in resp.json().get("elements", []):
+            tags = e.get("tags", {})
+            naam = tags.get("name:nl") or tags.get("name", "")
+            if not naam or naam in seen:
+                continue
+            seen.add(naam)
+            dist = haversine_km(lat, lng, e["lat"], e["lon"])
+            places.append({
+                "naam": naam,
+                "dist": dist,
+                "prio": prio.get(tags.get("place", ""), 3),
+            })
+
+        def zone(r_in, r_out, n=5):
+            bucket = [p for p in places if r_in <= p["dist"] < r_out]
+            bucket.sort(key=lambda p: (p["prio"], p["dist"]))
+            return [p["naam"] for p in bucket[:n]]
+
+        r_v = sim.get("r_vuurbal", 0)
+        r_z = sim.get("r_zware_vern", 0)
+        r_m = sim.get("r_matige_vern", 0)
+        r_l = sim.get("r_lichte_schade", 0)
+        r_s = sim.get("r_seismisch", 0)
+
+        return {
+            "vuurbal":      zone(0,   r_v, 5),
+            "zware_vern":   zone(r_v, r_z, 5),
+            "matige_vern":  zone(r_z, r_m, 5),
+            "lichte_schade":zone(r_m, r_l, 5),
+            "seismisch":    zone(r_l, r_s, 5),
+        }
+    except Exception as e:
+        print(f"[geo_zones] {e}")
+        return {}
+
+
 # ── Berekeningsfuncties ────────────────────────────────────────────────────
 
 def extract_asteroide_data(asteroid):
@@ -1029,6 +1112,21 @@ IMPACTLOCATIE: {sim['land_naam']} (coördinaten: {lat:.1f}°N, {lng:.1f}°E)
 Noem in het artikel concrete steden en regio's van {sim['land_naam']} die door elke schaderadius worden getroffen.
 """
 
+    # Voeg opgehaalde plaatsnamen toe aan de prompt als ze beschikbaar zijn
+    geo = sim.get("geo_zones", {})
+    if any(geo.values()):
+        def fmt_geo(key):
+            pl = geo.get(key, [])
+            return ", ".join(pl) if pl else "onbekend"
+        geo_instructie += f"""
+OPGEHAALDE PLAATSNAMEN (gebruik deze EXACT in het artikel):
+  • Vuurbal ({sim.get('r_vuurbal',0):.0f} km): {fmt_geo('vuurbal')}
+  • Zware verwoesting ({sim.get('r_zware_vern',0):.0f} km): {fmt_geo('zware_vern')}
+  • Matige verwoesting ({sim.get('r_matige_vern',0):.0f} km): {fmt_geo('matige_vern')}
+  • Lichte schade ({sim.get('r_lichte_schade',0):.0f} km): {fmt_geo('lichte_schade')}
+  • Seismisch ({sim.get('r_seismisch',0):.0f} km): {fmt_geo('seismisch')}
+"""
+
     return f"""Je bent een senior journalist van het Nederlandse nieuwsagentschap "Astro Nieuws BV".
 Schrijf een MEESLEPEND, CINEMATISCH en GEDETAILLEERD fictief nieuwsartikel over de volgende gesimuleerde asteroïde-inslag.
 
@@ -1236,16 +1334,42 @@ Dit is het laatste bericht van Astro Nieuws. Moge deze transmissie iemand bereik
 *⚠ Demo-artikel · Bij een extinctie-event is er geen journalist meer over om verslag te doen.*"""
 
     # --- Normaal artikel ---
+    geo = sim.get("geo_zones", {})
+
+    def fmt_plaatsen(key, fallback="de omgeving"):
+        plaatsen = geo.get(key, [])
+        if not plaatsen:
+            return fallback
+        return ", ".join(plaatsen[:-1]) + (" en " + plaatsen[-1] if len(plaatsen) > 1 else plaatsen[0])
+
+    epicentrum    = city_naam or land
+    p_vuurbal     = fmt_plaatsen("vuurbal",       f"het centrum van {epicentrum}")
+    p_zwaar       = fmt_plaatsen("zware_vern",    f"de directe omgeving")
+    p_matig       = fmt_plaatsen("matige_vern",   f"omliggende steden")
+    p_licht       = fmt_plaatsen("lichte_schade", f"verder gelegen steden")
+    p_seis        = fmt_plaatsen("seismisch",     f"verre steden")
+
     if city_naam:
         kop = f"ASTEROÏDE TREFT {city_naam.upper()}: {land.upper()} IN AS"
     else:
         kop = f"ASTEROÏDE TREFT {land.upper()}: MASSALE VERWOESTING"
+
     ondertitel = (
         f"Object met diameter {sim['diameter_min']:.0f}–{sim['diameter_max']:.0f} m "
         f"sloeg in met {sim['energie_megaton']:.0f} megaton TNT — magnitude {magnitude}"
     )
 
-    # Slotzin afhankelijk van ernst
+    verwoesting_alinea = (
+        f"De vuurbal met een straal van **{sim['r_vuurbal']:.0f} km** verwoestte volledig: "
+        f"**{p_vuurbal}** — alles verdampte in een fractie van een seconde. "
+        f"Binnen de zware verwoestingszone (**{sim['r_zware_vern']:.0f} km**) lagen "
+        f"**{p_zwaar}**; geen enkel gebouw bleef overeind. "
+        f"De matige verwoestingszone (**{sim['r_matige_vern']:.0f} km**) omvatte "
+        f"**{p_matig}**, waar houten constructies zijn weggevaagd en zware schade aan betongebouwen werd geregistreerd. "
+        f"De schokgolf was tot op **{sim['r_seismisch']:.0f} km** voelbaar — tot in "
+        f"**{p_seis}** deden ramen het uit hun sponningen."
+    )
+
     if land_vernietigd:
         slot = (
             f"Het getroffen gebied is voor lange tijd onbewoonbaar. "
@@ -1273,11 +1397,13 @@ Dit is het laatste bericht van Astro Nieuws. Moge deze transmissie iemand bereik
 
 *Astro Nieuws Redactie — {land}, 14 november 2026*
 
-Een asteroïde met de naam **{sim['asteroid_naam']}** heeft {city_naam + ', ' if city_naam else ''}{land} getroffen met een verwoestende kracht die wetenschappers omschrijven als ongekend in de moderne geschiedenis. De inslag vond plaats in de vroege ochtend en heeft een oppervlakte van {fmt(sim['vernietigde_opp'])} km² verwoest — goed voor {sim['procent_land']:.1f}% van het landoppervlak.
+Een asteroïde met de naam **{sim['asteroid_naam']}** heeft **{epicentrum}** getroffen met een verwoestende kracht die wetenschappers omschrijven als ongekend in de moderne geschiedenis. De inslag vond plaats in de vroege ochtend en heeft een oppervlakte van {fmt(sim['vernietigde_opp'])} km² verwoest — goed voor {sim['procent_land']:.1f}% van het landoppervlak.
 
-De vrijgekomen energie bedroeg **{sim['energie_megaton']:.0f} megaton TNT** — het equivalent van {fmt(hiroshima_x)} atoombommen van het type dat op Hiroshima werd afgeworpen. {seismische_gevolgen}{f" Het impactpunt in {city_naam} en directe omgeving is volledig verdampt." if city_naam else ""}
+De vrijgekomen energie bedroeg **{sim['energie_megaton']:.0f} megaton TNT** — het equivalent van {fmt(hiroshima_x)} atoombommen van het type dat op Hiroshima werd afgeworpen. {seismische_gevolgen}
 
-Hulporganisaties schatten het totale dodental op circa **{h(sl_totaal)}**. Daarvan kwamen {h(sim['sl_direct'])} mensen direct om het leven in de vuurbal en explosie. Nog eens {h(sim['sl_thermisch'])} slachtoffers bezweken aan de thermische straling binnen een straal van {sim['r_thermisch']:.0f} km. De shockgolf eiste {h(sim['sl_shockgolf'])} levens, terwijl {h(sim['sl_seismisch'])} mensen omkwamen door seismische naschokken tot op {sim['r_seismisch']:.0f} km van het epicentrum.
+{verwoesting_alinea}
+
+Hulporganisaties schatten het totale dodental op circa **{h(sl_totaal)}**. Daarvan kwamen {h(sim['sl_direct'])} mensen direct om het leven in de vuurbal en explosie. Nog eens {h(sim['sl_thermisch'])} slachtoffers bezweken aan de thermische straling. De shockgolf eiste {h(sim['sl_shockgolf'])} levens en {h(sim['sl_seismisch'])} mensen kwamen om door seismische naschokken.
 
 {citaat_wetenschap} De Chicxulub-inslag van 66 miljoen jaar geleden, die de dinosaurussen uitroeide, had een vergelijkbare oorsprong — zij het met een miljoenen maal grotere energie.
 
@@ -1324,6 +1450,10 @@ def generate_article():
     sim.setdefault("composition", "stony")
     sim.setdefault("impact_angle", 45)
     sim.setdefault("target_type", "rock")
+    sim.setdefault("city_naam", "")
+
+    # Haal echte plaatsnamen op per schaderadius via OpenStreetMap Overpass
+    sim["geo_zones"] = haal_geo_zones(sim)
 
     image_url      = bouw_afbeelding_url(sim)
     city_image_url = bouw_stad_afbeelding_url(sim)
