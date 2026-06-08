@@ -49,8 +49,8 @@ COMPOSITION_DATA = {
 
 DB_CONFIG = {
     "host": "127.0.0.1",
-    "user": "root",
-    "password": "Kisuma01",
+    "user": "astro",
+    "password": "astro_impact_2024",
     "database": "astro_impact",
     "charset": "utf8mb4",
     "cursorclass": pymysql.cursors.DictCursor,
@@ -951,6 +951,7 @@ def get_usgs_earthquakes():
                 "url":   p.get("url", ""),
                 "lat":   coords[1] if len(coords) > 1 else None,
                 "lng":   coords[0] if len(coords) > 0 else None,
+                "depth": coords[2] if len(coords) > 2 else None,
             })
         return jsonify({"data": result})
     except Exception as e:

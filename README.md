@@ -1,150 +1,296 @@
-# ASTRO-impact
+# ASTRO-impact — Interactief Asteroïde Impact Dashboard
+
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![React](https://img.shields.io/badge/frontend-React%2018-61dafb)
+![Flask](https://img.shields.io/badge/backend-Flask-lightgrey)
+![MySQL](https://img.shields.io/badge/database-MySQL%208%2B-orange)
 ![Status](https://img.shields.io/badge/status-active-success)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Final Project](https://img.shields.io/badge/NOVI-Final%20Project-orange)
-![Made with ❤️](https://img.shields.io/badge/Made%20with-❤️-red)
 ![NASA API](https://img.shields.io/badge/API-NASA-blue)
-![CLI-App](https://img.shields.io/badge/Interface-CLI-green)
 
-![ASTRO-impact demo](images/demo-impact.png)
+Een volledig interactief webdashboard dat realtime NASA-data combineert met een fysisch impactmodel om asteroïde-inslagen te simuleren, visualiseren en analyseren.
 
-**ASTRO-impact** is een interactieve command-line applicatie geschreven in Python.
-Met ASTRO-impact kun je simuleren wat er gebeurt als een asteroïde de aarde raakt, inclusief energie, schade, slachtoffers en vergelijkingen met historische inslagen zoals Chicxulub.
-
-### Functies
-
-Met ASTRO-impact kun je:
-
-* Near-Earth asteroïden bekijken via de NASA API
-* Landinformatie ophalen via de REST Countries API
-* Een willekeurige of specifieke asteroïde en land selecteren
-* De impact simuleren met berekende energie, magnitude en schade
-* Vergelijken met de Chicxulub-inslag en de schaal van Richter
-* Tabelthema’s kiezen voor een gepersonaliseerde weergave
-* Werken met een lokale JSON-cache voor snelle API-laadtijden
-
-### Gebruikte libraries
-
-* **requests** – API-verkeer (NASA en REST Countries)
-* **prettytable**, **colortable** – tabellen en thema’s
-* **cprint**, **pyfiglet** – kleurrijke CLI en ASCII-art
-* **humanize** – leesbare getallen (zoals ‘miljoen’ of ‘miljard’)
-* **math**, **random**, **datetime**, **os**, **platform** – standaard Python-modules
-* **dotenv** – voor veilige API-key opslag
-
-### Over dit project
-
-ASTRO-impact is ontwikkeld als eindproject binnen de module *Programming Fundamentals* bij NOVI Hogeschool.
-Het project combineert API-integratie, bestandsbeheer, datastructuren, wiskundige berekeningen en gebruikersinteractie in een visueel aantrekkelijke CLI-simulatie.
-
-### English summary
-
-*ASTRO-impact is an interactive Python CLI simulation that models asteroid impacts on Earth using live NASA data. It calculates energy, magnitude, and damage estimates, comparing them to real-world events like the Chicxulub impact, with dynamic tables, colorful output, and API integrations.*
+> **Refactor-geschiedenis:** het project begon als een Python CLI-applicatie (eindproject NOVI Hogeschool). De backend is sindsdien uitgebreid naar een volledige Flask REST-API en de interface is volledig herbouwd als een React-dashboard.
 
 ---
 
-## ⚙️ Installatie & gebruik
+## Schermafbeelding
+
+![ASTRO-impact Dashboard](images/demo-impact.png)
+
+---
+
+## Architectuur
+
+```
+ASTRO-impact-webapp/
+├── app.py                    # Flask REST-API (poort 5000)
+├── richter_schaal.py         # Richter-schaaldata
+├── setup_db.sql              # Database-schema (eenmalig uitvoeren)
+├── requirements.txt          # Python-dependencies
+└── dashboard/                # React-frontend (Vite, poort 3000)
+    └── src/
+        ├── App.jsx            # Hoofdlayout — drag & drop grid, widget-toggles
+        ├── components/
+        │   └── SimulatorModal.jsx    # Compositie/doeltype-keuze-modal
+        └── widgets/
+            ├── WidgetAsteroids.jsx        # NASA Near-Earth Objects
+            ├── WidgetSimulatorMap.jsx     # Interactieve impactkaart
+            ├── WidgetStats.jsx            # Simulatiestatistieken
+            ├── WidgetNewsArticle.jsx      # AI-gegenereerd nieuwsartikel
+            ├── WidgetFireballs.jsx        # NASA fireball-database
+            ├── WidgetEarthquakes.jsx      # USGS aardbevingen
+            ├── WidgetRandomAsteroid.jsx   # Willekeurige asteroïde
+            └── WidgetDbStatus.jsx         # Databaseverbinding
+```
+
+### Tech stack
+
+| Laag | Technologie |
+|---|---|
+| Frontend | React 18, Vite, react-grid-layout, react-leaflet, react-markdown |
+| Backend | Python 3, Flask, pymysql, Anthropic SDK |
+| Database | MariaDB / MySQL 8+ |
+| Externe API's | NASA NeoWs, NASA Fireball, USGS Earthquakes, Nominatim, Pollinations.AI |
+
+---
+
+## Installatie
 
 ### Vereisten
 
-* **Python 3.10 of hoger**
-* Een gratis **NASA API key** (verkrijgbaar via [api.nasa.gov](https://api.nasa.gov))
+- Python 3.10+
+- Node.js 18+
+- MariaDB of MySQL 8+
+- Gratis NASA API-sleutel via [api.nasa.gov](https://api.nasa.gov)
 
----
-
-### Stap 1 - Clone de repository
-
-```bash
-git clone https://github.com/Steffan1988/astro-impact.git
-cd astro-impact
-```
-
----
-
-### Stap 2 - Maak een virtuele omgeving (optioneel, maar aanbevolen)
-
-**Windows (PowerShell):**
-
-```powershell
-python -m venv venv
-venv\Scripts\activate
-```
-
-**macOS / 🐧 Linux (bash/zsh):**
+### 1 — Clone de repository
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+git clone https://github.com/Steffan1988/ASTRO-impact-webapp.git
+cd ASTRO-impact-webapp
 ```
 
----
-
-### Stap 3 - Installeer de dependencies
+### 2 — Backend instellen
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
+Maak een `.env` bestand aan in de root:
 
-### Stap 4 - Voeg je NASA API key toe
-
-**Windows:**
-
-```powershell
-copy .env_example .env
-notepad .env
+```
+API_KEY=jouw_nasa_api_key
+ANTHROPIC_API_KEY=           # leeg laten voor demo-modus
 ```
 
-**macOS / Linux:**
+### 3 — Database instellen
 
 ```bash
-cp .env_example .env
-nano .env
+mysql -u root -p < setup_db.sql
 ```
 
-Vul vervolgens je eigen API KEY in en sla het document op:
+Of maak een dedicated gebruiker aan:
 
----
-
-### Stap 5 - Start de applicatie
-
-```bash
-python astro_impact.py
+```sql
+CREATE USER 'astro'@'localhost' IDENTIFIED BY 'jouw_wachtwoord';
+GRANT ALL PRIVILEGES ON astro_impact.* TO 'astro'@'localhost';
+FLUSH PRIVILEGES;
 ```
 
-Als alles correct is geïnstalleerd, verschijnt het **ASCII-welkomstscherm**
+Pas vervolgens `DB_CONFIG` in `app.py` aan naar jouw inloggegevens.
+
+### 4 — Flask-server starten
+
 ```bash
-    _    ____ _____ ____   ___        _                            _   
-   / \  / ___|_   _|  _ \ / _ \      (_)_ __ ___  _ __   __ _  ___| |_ 
-  / _ \ \___ \ | | | |_) | | | |_____| | '_ ` _ \| '_ \ / _` |/ __| __|
- / ___ \ ___) || | |  _ <| |_| |_____| | | | | | | |_) | (_| | (__| |_ 
-/_/   \_\____/ |_| |_| \_\\___/      |_|_| |_| |_| .__/ \__,_|\___|\__|
+python app.py
+```
 
-Welkom bij ASTRO-impact — Simuleer de impact van een asteroïde!
+De API is beschikbaar op `http://localhost:5000`.
 
-Wat wil je doen?
-1. Bekijk de lijst met asteroïden
-2. Bekijk de lijst met landen
-3. Simuleer een inslag
-4. Kies een ander tabel thema
-5. Sluit het programma
+### 5 — React-frontend starten
 
-Maak een keuze (1–5): 
-````
+```bash
+cd dashboard
+npm install
+npm run dev
+```
 
-⚠️ Let op:
-Bij de eerste start haalt ASTRO-impact de Near-Earth Object-data op via de NASA API.
-Dit kan even duren, omdat de dataset lokaal wordt gecachet.
-Volgende starts gaan daarna veel sneller.
+Open `http://localhost:3000` in de browser.
 
 ---
 
-✅ **Getest met:**
+## Dashboard-functionaliteit
 
-* Python 3.12
-* Windows 11
+Het dashboard bestaat uit een **vrij indeelbaar widget-grid**. Widgets kunnen naar wens worden aan- en uitgezet, verplaatst en vergroot/verkleind. De lay-out wordt automatisch opgeslagen in `localStorage`.
 
-💻 *Compatibel met macOS en Linux.*
+| Knop | Functie |
+|---|---|
+| **Widgets** | Schakel individuele widgets aan of uit |
+| **Bewerken** | Vergrendel of ontgrendel de lay-out voor drag & resize |
+| **Reset** | Herstel de standaard lay-out |
 
+---
+
+## Widgets
+
+### Asteroïden
+
+Toont alle Near-Earth Objects van de afgelopen 7 dagen via de **NASA NeoWs API**.
+
+- Kolommen: naam, diameter (min–max in meter), snelheid (km/u), afstand (km), gevaarlijkheidsstatus
+- **Alle kolommen zijn sorteerbaar** — klik op een kolomkop om oplopend/aflopend te sorteren; actieve kolom is gemarkeerd met ▲/▼
+- Zoekbalk om snel te filteren
+- Rijen zijn **draggable naar de Impact Simulator kaart** — sleep een asteroïde op een land om een simulatie te starten
+
+---
+
+### Impact Simulator
+
+Een interactieve wereldkaart (Leaflet, CartoDB-tegels) voor het simuleren van asteroïde-inslagen.
+
+**Werkwijze:**
+1. Sleep een rij uit de Asteroïden-widget en laat hem vallen op een locatie op de kaart
+2. Nominatim reverse-geocoding detecteert automatisch het land en de dichtstbijzijnde stad
+3. Een **animatie-modal** verschijnt met twee keuze-stappen:
+   - **Samenstelling:** Steenachtig (🪨), IJzer (⚙️) of Komeet (☄️) — elke optie heeft een eigen CSS-animatie en uitleg over de effecten op de inslag
+   - **Doeltype:** Vaste grond (⛰️), Oceaan (🌊) of Zachte bodem (🌿) — beïnvloedt kratersvorming en energieoverdracht
+4. Het **Collins et al. (2005) impactmodel** berekent de schade
+5. Op de kaart verschijnen **6 gekleurde schade-cirkels** met popup-uitleg:
+
+| Zone | Kleur | Omschrijving |
+|---|---|---|
+| Vuurbal / Krater | Rood | Totale vaporisatie, kraterzone |
+| Zware verwoesting | Oranje | Overpressure > 138 kPa, sterftekans > 90% |
+| Matige verwoesting | Geel | Overpressure > 34 kPa, sterftekans ~50% |
+| Thermisch | Roze | 3e-graads brandwonden, sterftekans ~40% |
+| Lichte schade | Blauw | Glasbreuk, trommelvliesschade |
+| Seismisch | Paars | Seismische schokgolf |
+
+6. Een resultatenbalk toont: energie (megaton TNT), slachtoffers, Richter-magnitude en kraterdiameter
+7. Simulatieresultaten worden opgeslagen in de database voor gebruik door andere widgets
+
+---
+
+### Statistieken
+
+Overzicht en analyse van alle opgeslagen simulaties — vier tabs:
+
+- **Slachtofferranges** — verdeling over 6 categorieën (< 1K tot > 100M) als balkdiagram
+- **Per zone** — totaal slachtoffers per oorzaak (direct, thermisch, schokgolf, seismisch, overig) over alle simulaties
+- **Top landen** — top 8 meest getroffen landen op basis van gecumuleerde slachtoffers
+- **Per inslag** — selecteer een simulatie en zie welke landen in élke schade-zone vallen:
+  - Haversine-afstand van impactpunt naar landcentrum bepaalt of een land in een zone valt
+  - Per land: afstand (km), bevolking en **geschatte slachtoffers**
+  - Doelland toont de exacte simulatiewaarde; andere landen krijgen een schatting: `bevolking × min(1, zone_oppervlak / land_oppervlak) × zone_sterftekans`
+  - Zone-header toont het totaal over alle landen in die zone, gesorteerd op hoogste slachtoffers
+
+---
+
+### AI Nieuwsbericht
+
+Genereert een fictief, cinematisch nieuwsartikel over een geselecteerde simulatie.
+
+- Selecteer een simulatie via de dropdown
+- Klik **✍️ Genereer artikel** om te starten
+- De tekst wordt **realtime gestreamd** via Server-Sent Events (SSE) met een levend tikeffect
+- Na voltooiing wordt het artikel opgeslagen in de database
+- **Met Anthropic API-sleutel:** Claude schrijft een volledig journalistiek artikel (500–700 woorden) met concrete plaatsnamen, fictieve citaten van wetenschappers en vergelijkingen met historische inslagen
+- **Demo-modus (geen sleutel):** lokaal gegenereerd artikel op basis van de simulatiedata, inclusief een speciale extinctievariant voor catastrofale inslagen
+- Sfeerimpressie via **Pollinations.AI** (gratis, geen API-sleutel vereist)
+
+---
+
+### Vuurbalgebeurtenissen
+
+Recente meteoor-fireball-waarnemingen uit de **NASA Fireball & Bolide database**.
+
+- Top 15 energierijkste gebeurtenissen gesorteerd op vrijgekomen energie
+- Toont: datum, energie (kiloton TNT), locatie, hoogte en snelheid
+
+---
+
+### Aardbevingen
+
+Recente significante aardbevingen via de **USGS Earthquake Hazards API**.
+
+- Magnitude-slider om een minimumdrempel in te stellen
+- **Alle kolommen zijn sorteerbaar** via klikbare kolomkoppen:
+  - **M** — magnitude
+  - **Locatie** — alfabetisch
+  - **Datum** — standaard meest recent bovenaan
+  - **Diepte (km)**
+- Magnitudes zijn kleurgecodeerd: groen (< 5), oranje (5–7), rood (≥ 7)
+
+---
+
+### Willekeurige Asteroïde
+
+Kiest een willekeurige asteroïde uit de huidige NASA-dataset en toont de details: naam, diameter, snelheid, afstand en gevaarlijkheidsstatus.
+
+---
+
+### Database Status
+
+Toont de verbindingsstatus met de MySQL-database en het aantal opgeslagen simulaties. Handig om de backend-configuratie te controleren.
+
+---
+
+## Fysisch impactmodel
+
+De simulaties zijn gebaseerd op het **Collins, Melosh & Marcus (2005)** impactmodel:
+
+- **Holsapple (1993)** — kraterskalering (transitant → definitief)
+- **Glasstone & Dolan (1977)** — luchtgolfdruk en thermische straling
+- **Melosh (1989)** — atmosferische intrede en airburst-drempel
+
+Het model berekent:
+
+| Parameter | Beschrijving |
+|---|---|
+| Kinetische energie | joules en megaton TNT |
+| Airburst | detectie + hoogte in km |
+| Krater | diameter en diepte in km |
+| Seismische magnitude | Richter-schaal |
+| 6 schade-zones | radii in km |
+| Slachtoffers | per zone op basis van bevolkingsdichtheid |
+
+---
+
+## Database-schema
+
+Twee tabellen:
+
+- **simulations** — alle impactparameters, schadedata en locatiegegevens per simulatie
+- **articles** — gegenereerde AI-nieuwsartikelen gekoppeld aan een simulatie (foreign key + CASCADE DELETE)
+
+Initialiseer met:
+
+```bash
+mysql -u root -p < setup_db.sql
+```
+
+---
+
+## API-endpoints (Flask)
+
+| Endpoint | Methode | Beschrijving |
+|---|---|---|
+| `/api/asteroids` | GET | Nabije asteroïden (NASA NeoWs, dagelijks gecached) |
+| `/api/simulate` | POST | Voer een impactsimulatie uit |
+| `/api/simulations` | GET | Lijst van opgeslagen simulaties |
+| `/api/article/generate` | POST | Genereer een AI-nieuwsartikel (SSE stream) |
+| `/api/article/<sim_id>` | GET | Haal opgeslagen artikel op |
+| `/api/nasa/fireballs` | GET | NASA fireball-database |
+| `/api/usgs/earthquakes` | GET | USGS significante aardbevingen |
+| `/api/countries` | GET | Landendatabase met populatie & coördinaten |
+| `/api/random/asteroid` | GET | Willekeurige asteroïde |
+| `/api/db/status` | GET | Databaseverbindingsstatus |
+| `/api/geocode` | GET | Plaatsnaam-zoekfunctie (Nominatim) |
+| `/api/img/<filename>` | GET | Lokaal opgeslagen Pollinations-afbeelding |
+
+---
+
+## Over dit project
+
+ASTRO-impact is begonnen als eindproject binnen de module *Programming Fundamentals* bij **NOVI Hogeschool** — een interactieve Python CLI-simulatie. Het project is sindsdien volledig doorontwikkeld: de backend is omgebouwd naar een Flask REST-API met MySQL-database, en de interface is herschreven als een moderne React-webapplicatie met drag & droppable widgets, een Leaflet-kaart en AI-integratie.

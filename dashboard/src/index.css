@@ -1,0 +1,57 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0b0f1e;
+  --surface: #111827;
+  --surface2: #1a2235;
+  --border: #1e3a5f;
+  --accent: #3b82f6;
+  --accent2: #8b5cf6;
+  --danger: #ef4444;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --text: #e2e8f0;
+  --muted: #64748b;
+}
+
+[data-theme="light"] {
+  --bg: #f0f4ff;
+  --surface: #ffffff;
+  --surface2: #edf0fa;
+  --border: #c5cce8;
+  --accent: #2563eb;
+  --accent2: #7c3aed;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --warning: #d97706;
+  --text: #1e293b;
+  --muted: #64748b;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+}
+
+/* Leaflet map height fix */
+.leaflet-container { height: 100%; width: 100%; }
+
+/* react-grid-layout */
+.react-grid-item.react-grid-placeholder {
+  background: var(--accent);
+  opacity: 0.15;
+  border-radius: 12px;
+}
+.react-resizable-handle {
+  opacity: 0.4;
+  filter: invert(0.5);
+}
+.react-resizable-handle:hover { opacity: 1; }
+
+/* scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }

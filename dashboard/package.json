@@ -1,0 +1,23 @@
+{
+  "name": "dashboard",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^6.0.2",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.17.0",
+    "react-grid-layout": "^1.5.1",
+    "react-leaflet": "^5.0.0",
+    "react-markdown": "^10.1.0"
+  }
+}

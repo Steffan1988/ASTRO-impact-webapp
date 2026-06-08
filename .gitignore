@@ -31,3 +31,8 @@ Thumbs.db
 # Logs
 *.log
 nohup.out
+
+# React / Vite dashboard
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.vite/
