@@ -38,11 +38,12 @@ export default function WidgetNewsArticle() {
       })
   }, [selectedId])
 
-  const [streamText, setStreamText] = useState('')
+  const [streamText, setStreamText]     = useState('')
+  const [streamImages, setStreamImages] = useState({ img1: null, img2: null })
 
   const generate = useCallback(async () => {
     if (!selectedId) return
-    setGenerating(true); setError(null); setArticle(null); setStreamText('')
+    setGenerating(true); setError(null); setArticle(null); setStreamText(''); setStreamImages({ img1: null, img2: null })
 
     try {
       const resp = await fetch('/api/article/generate', {
@@ -67,18 +68,16 @@ export default function WidgetNewsArticle() {
         buffer += decoder.decode(value, { stream: true })
 
         const lines = buffer.split('\n')
-        buffer = lines.pop() // keep incomplete line
+        buffer = lines.pop()
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
           try {
             const evt = JSON.parse(line.slice(6))
-            if (evt.text) {
-              setStreamText(prev => prev + evt.text)
-            }
-            if (evt.article_done) {
-              articleId = evt.article_id
-            }
+            if (evt.text)         setStreamText(prev => prev + evt.text)
+            if (evt.article_done) articleId = evt.article_id
+            if (evt.img1_url)     setStreamImages(prev => ({ ...prev, img1: evt.img1_url }))
+            if (evt.img2_url)     setStreamImages(prev => ({ ...prev, img2: evt.img2_url }))
           } catch {}
         }
       }
@@ -89,7 +88,7 @@ export default function WidgetNewsArticle() {
         if (ar.ok) {
           const d = await ar.json()
           setArticle(d)
-          setStreamText('')
+          setStreamText(''); setStreamImages({ img1: null, img2: null })
         }
       }
     } catch (e) { setError(e.message) }
@@ -192,7 +191,19 @@ export default function WidgetNewsArticle() {
 
       {/* Artikel inhoud */}
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {loading && <p style={{ color: 'var(--muted)', padding: 16, textAlign: 'center' }}>Laden...</p>}
+        {loading && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 4 }}>
+            <div style={{ height: 26, borderRadius: 6, background: 'var(--surface2)', animation: 'skeleton-pulse 1.4s ease-in-out infinite', width: '80%' }} />
+            <div style={{ height: 8, borderRadius: 4, background: 'var(--surface2)', animation: 'skeleton-pulse 1.4s 0.05s ease-in-out infinite' }} />
+            {[0.95, 0.85, 1.0, 0.75, 0.9, 0.6].map((w, i) => (
+              <div key={i} style={{
+                height: 13, borderRadius: 4, background: 'var(--surface2)',
+                width: `${w * 100}%`,
+                animation: `skeleton-pulse 1.4s ${i * 0.08}s ease-in-out infinite`,
+              }} />
+            ))}
+          </div>
+        )}
 
         {!loading && !article && !generating && selectedId && (
           <div style={{ textAlign: 'center', padding: 24 }}>
@@ -202,7 +213,7 @@ export default function WidgetNewsArticle() {
             </p>
             <p style={{ color: 'var(--muted)', fontSize: 11, marginTop: 4 }}>
               Klik op <strong style={{ color: 'var(--text)' }}>✍️ Genereer artikel</strong> om een
-              AI-nieuwsbericht te maken{!window.__hasAnthropicKey && ' (demo-modus)'}
+              AI-nieuwsbericht te laten schrijven
             </p>
           </div>
         )}
@@ -218,13 +229,30 @@ export default function WidgetNewsArticle() {
 
         {generating && !streamText && (
           <div style={{ textAlign: 'center', padding: 24 }}>
-            <div style={{ fontSize: 28, marginBottom: 12 }}>✍️</div>
-            <p style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600 }}>Artikel wordt geschreven...</p>
+            <style>{`
+              @keyframes typing-dot {
+                0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
+                40% { opacity: 1; transform: translateY(-4px); }
+              }
+              .typing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin: 0 2px; animation: typing-dot 1.2s ease-in-out infinite; }
+            `}</style>
+            <div style={{ fontSize: 28, marginBottom: 12, animation: 'impact-pulse 2s ease-in-out infinite' }}>✍️</div>
+            <p style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Artikel wordt geschreven</p>
+            <div>
+              <span className="typing-dot" style={{ animationDelay: '0s' }} />
+              <span className="typing-dot" style={{ animationDelay: '0.2s' }} />
+              <span className="typing-dot" style={{ animationDelay: '0.4s' }} />
+            </div>
           </div>
         )}
 
         {generating && streamText && (
           <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text)' }}>
+            {streamImages.img1 && (
+              <img src={streamImages.img1} alt="Impact visualisatie"
+                style={{ width: '100%', borderRadius: 8, marginBottom: 10, maxHeight: 160, objectFit: 'cover', animation: 'fadeInUp 0.3s ease' }}
+                onError={e => { e.target.style.display = 'none' }} />
+            )}
             <ReactMarkdown
               components={{
                 h1: ({children}) => <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent)', margin: '12px 0 6px' }}>{children}</h3>,
@@ -251,15 +279,20 @@ export default function WidgetNewsArticle() {
               </h2>
             )}
 
-            {/* Afbeelding */}
+            {/* Afbeeldingen */}
             {article.image_url && (
               <img
                 src={article.image_url}
                 alt="Impact visualisatie"
-                style={{
-                  width: '100%', borderRadius: 8, marginBottom: 12,
-                  maxHeight: 180, objectFit: 'cover',
-                }}
+                style={{ width: '100%', borderRadius: 8, marginBottom: 8, maxHeight: 180, objectFit: 'cover' }}
+                onError={e => { e.target.style.display = 'none' }}
+              />
+            )}
+            {article.city_image_url && (
+              <img
+                src={article.city_image_url}
+                alt="Stadsverwoesting"
+                style={{ width: '100%', borderRadius: 8, marginBottom: 12, maxHeight: 160, objectFit: 'cover' }}
                 onError={e => { e.target.style.display = 'none' }}
               />
             )}

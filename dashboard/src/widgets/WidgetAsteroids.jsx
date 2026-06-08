@@ -52,8 +52,24 @@ export default function WidgetAsteroids() {
     })
   }, [data, search, sort])
 
-  if (loading) return <p style={{ color: 'var(--muted)', textAlign: 'center', paddingTop: 24 }}>Laden...</p>
-  if (error)   return <p style={{ color: 'var(--danger)' }}>Fout: {error}</p>
+  if (loading) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 4 }}>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8 }}>
+          {[3,1,1,1,0.5].map((flex, j) => (
+            <div key={j} style={{ flex, height: 20, borderRadius: 4, background: 'var(--surface2)', animation: `skeleton-pulse 1.4s ${i*0.07}s ease-in-out infinite` }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+  if (error) return (
+    <div style={{ textAlign: 'center', padding: '32px 16px' }}>
+      <div style={{ fontSize: 36, marginBottom: 12 }}>📡</div>
+      <p style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>NASA API niet bereikbaar</p>
+      <p style={{ color: 'var(--danger)', fontSize: 12 }}>{error}</p>
+    </div>
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
@@ -103,34 +119,53 @@ export default function WidgetAsteroids() {
             </tr>
           </thead>
           <tbody>
-            {sorted.slice(0, 100).map((a, i) => (
-              <tr
-                key={i}
-                draggable
-                onDragStart={e => handleDragStart(e, a)}
-                onDragEnd={() => setDragging(null)}
-                style={{
-                  borderBottom: '1px solid var(--border)',
-                  cursor: 'grab',
-                  background: dragging === a.id ? 'rgba(59,130,246,0.15)' : 'transparent',
-                  transition: 'background 0.1s',
-                }}
-                title="Sleep naar de kaart om een inslag te simuleren"
-              >
-                <td style={tdStyle}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ color: 'var(--muted)', fontSize: 10 }}>⠿</span>
-                    {a.naam ?? a.name ?? '—'}
-                  </span>
-                </td>
-                <td style={tdStyle}>{fmt(a.diameter_min)}–{fmt(a.diameter_max)}</td>
-                <td style={tdStyle}>{fmt(a.snelheid ?? a.relative_velocity_kms)}</td>
-                <td style={tdStyle}>{fmtBig(a.afstand ?? a.miss_distance_km)}</td>
-                <td style={{ ...tdStyle, color: (a.gevaarlijk ?? a.is_potentially_hazardous) ? 'var(--danger)' : 'var(--success)' }}>
-                  {(a.gevaarlijk ?? a.is_potentially_hazardous) ? '⚠' : '✓'}
-                </td>
-              </tr>
-            ))}
+            {sorted.slice(0, 100).map((a, i) => {
+              const hazardous = !!(a.gevaarlijk ?? a.is_potentially_hazardous)
+              const isActive  = dragging === a.id
+              return (
+                <tr
+                  key={i}
+                  draggable
+                  onDragStart={e => handleDragStart(e, a)}
+                  onDragEnd={() => setDragging(null)}
+                  style={{
+                    borderBottom: '1px solid var(--border)',
+                    cursor: 'grab',
+                    background: isActive
+                      ? 'rgba(59,130,246,0.18)'
+                      : hazardous
+                      ? 'rgba(239,68,68,0.04)'
+                      : 'transparent',
+                    transition: 'background 0.1s',
+                    borderLeft: hazardous ? '2px solid var(--danger)' : '2px solid transparent',
+                  }}
+                  title="Sleep naar de kaart om een inslag te simuleren"
+                >
+                  <td style={tdStyle}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ color: 'var(--muted)', fontSize: 10, flexShrink: 0 }}>⠿</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                        {a.naam ?? a.name ?? '—'}
+                      </span>
+                    </span>
+                  </td>
+                  <td style={tdStyle}>{fmt(a.diameter_min)}–{fmt(a.diameter_max)}</td>
+                  <td style={tdStyle}>{fmt(a.snelheid ?? a.relative_velocity_kms)}</td>
+                  <td style={tdStyle}>{fmtBig(a.afstand ?? a.miss_distance_km)}</td>
+                  <td style={tdStyle}>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700,
+                      padding: '2px 6px', borderRadius: 20,
+                      background: hazardous ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.12)',
+                      color: hazardous ? 'var(--danger)' : 'var(--success)',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {hazardous ? '⚠ PHA' : '✓'}
+                    </span>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
         {sorted.length === 0 && <p style={{ color: 'var(--muted)', textAlign: 'center', padding: 16 }}>Geen resultaten</p>}

@@ -53,8 +53,24 @@ export default function WidgetEarthquakes() {
     })
   }, [data, minMag, sort])
 
-  if (loading) return <p style={{ color: 'var(--muted)', textAlign: 'center', paddingTop: 24 }}>Laden...</p>
-  if (error)   return <p style={{ color: 'var(--danger)' }}>Fout: {error}</p>
+  if (loading) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 4 }}>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8 }}>
+          {[0.4,2,1,1].map((flex, j) => (
+            <div key={j} style={{ flex, height: 20, borderRadius: 4, background: 'var(--surface2)', animation: `skeleton-pulse 1.4s ${i*0.08}s ease-in-out infinite` }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+  if (error) return (
+    <div style={{ textAlign: 'center', padding: '32px 16px' }}>
+      <div style={{ fontSize: 36, marginBottom: 12 }}>🌍</div>
+      <p style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>USGS niet bereikbaar</p>
+      <p style={{ color: 'var(--danger)', fontSize: 12 }}>{error}</p>
+    </div>
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
@@ -111,9 +127,17 @@ export default function WidgetEarthquakes() {
                       {mag.toFixed(1)}
                     </span>
                   </td>
-                  <td style={{ padding: '6px 8px', color: 'var(--text)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  <td style={{ padding: '6px 8px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                     title={place}>
-                    {place || '—'}
+                    {q.url
+                      ? <a href={q.url} target="_blank" rel="noopener noreferrer"
+                          style={{ color: 'var(--text)', textDecoration: 'none' }}
+                          onMouseEnter={e => e.target.style.color = 'var(--accent)'}
+                          onMouseLeave={e => e.target.style.color = 'var(--text)'}>
+                          {place || '—'}
+                        </a>
+                      : <span style={{ color: 'var(--text)' }}>{place || '—'}</span>
+                    }
                   </td>
                   <td style={{ padding: '6px 8px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                     {date}

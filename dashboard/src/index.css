@@ -12,6 +12,8 @@
   --warning: #f59e0b;
   --text: #e2e8f0;
   --muted: #64748b;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --transition: 0.15s ease;
 }
 
 [data-theme="light"] {
@@ -26,32 +28,105 @@
   --warning: #d97706;
   --text: #1e293b;
   --muted: #64748b;
+  --shadow: 0 4px 24px rgba(0,0,0,0.12);
 }
 
 html, body, #root {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Leaflet map height fix */
+/* ── Transitions ──────────────────────────────────────────────────────────── */
+
+body, #root, .react-grid-item {
+  transition: background var(--transition), color var(--transition);
+}
+
+/* ── Leaflet map ──────────────────────────────────────────────────────────── */
 .leaflet-container { height: 100%; width: 100%; }
 
-/* react-grid-layout */
+/* ── react-grid-layout ────────────────────────────────────────────────────── */
 .react-grid-item.react-grid-placeholder {
   background: var(--accent);
   opacity: 0.15;
   border-radius: 12px;
 }
 .react-resizable-handle {
-  opacity: 0.4;
+  opacity: 0.35;
   filter: invert(0.5);
+  transition: opacity 0.15s;
 }
 .react-resizable-handle:hover { opacity: 1; }
 
-/* scrollbars */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* ── Scrollbars ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1;   }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes impact-pulse {
+  0%   { transform: scale(1);   opacity: 1; }
+  50%  { transform: scale(1.5); opacity: 0.6; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+
+.widget-enter {
+  animation: fadeInUp 0.25s ease forwards;
+}
+
+.skeleton {
+  background: var(--surface2);
+  border-radius: 4px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+/* ── Global button reset + hover ──────────────────────────────────────────── */
+
+button {
+  transition: opacity var(--transition), background var(--transition),
+              border-color var(--transition), transform var(--transition);
+}
+button:active:not(:disabled) { transform: scale(0.97); }
+
+/* ── Table ────────────────────────────────────────────────────────────────── */
+tbody tr:hover {
+  background: rgba(59,130,246,0.06) !important;
+}
+
+/* ── Focus rings ──────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

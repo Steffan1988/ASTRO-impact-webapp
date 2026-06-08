@@ -213,7 +213,7 @@ export default function WidgetStats() {
       </div>
 
       {/* Tab content */}
-      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div key={tab} style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6, animation: 'fadeInUp 0.18s ease' }}>
 
         {tab === 'ranges' && rangeCounts.map(r => (
           <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -334,9 +334,14 @@ function InslagTab({ sims, selectedSimId, setSelectedSimId, selectedSim, affecte
       )}
 
       {countriesLoading && (
-        <p style={{ color: 'var(--muted)', fontSize: 12, textAlign: 'center' }}>
-          Landen laden...
-        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[1, 2, 3].map(i => (
+            <div key={i} style={{
+              height: 80, borderRadius: 8, background: 'var(--surface2)',
+              animation: `skeleton-pulse 1.4s ${i * 0.15}s ease-in-out infinite`,
+            }} />
+          ))}
+        </div>
       )}
 
       {!countriesLoading && countries.length === 0 && (
@@ -453,7 +458,37 @@ function InslagTab({ sims, selectedSimId, setSelectedSimId, selectedSim, affecte
   )
 }
 
-const Loader = () => <p style={{ color: 'var(--muted)', textAlign: 'center', paddingTop: 24 }}>Laden...</p>
+const Loader = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 4 }}>
+    <div style={{ display: 'flex', gap: 8 }}>
+      {[0, 1, 2, 3].map(i => (
+        <div key={i} style={{
+          flex: 1, height: 52, borderRadius: 8,
+          background: 'var(--surface2)',
+          animation: `skeleton-pulse 1.4s ${i * 0.1}s ease-in-out infinite`,
+        }} />
+      ))}
+    </div>
+    <div style={{ display: 'flex', gap: 6 }}>
+      {[90, 80, 80, 100].map((w, i) => (
+        <div key={i} style={{
+          width: w, height: 28, borderRadius: 6,
+          background: 'var(--surface2)',
+          animation: `skeleton-pulse 1.4s ${i * 0.08}s ease-in-out infinite`,
+        }} />
+      ))}
+    </div>
+    {[0.75, 0.45, 0.60, 0.90, 0.35, 0.70].map((w, i) => (
+      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 90, height: 16, borderRadius: 4, background: 'var(--surface2)', animation: `skeleton-pulse 1.4s ${i*0.08}s ease-in-out infinite`, flexShrink: 0 }} />
+        <div style={{ flex: 1, height: 20, borderRadius: 4, background: 'var(--surface2)', animation: `skeleton-pulse 1.4s ${i*0.08}s ease-in-out infinite`, overflow: 'hidden' }}>
+          <div style={{ width: `${w*100}%`, height: '100%', background: 'var(--border)', borderRadius: 4, opacity: 0.5 }} />
+        </div>
+        <div style={{ width: 28, height: 16, borderRadius: 4, background: 'var(--surface2)', animation: `skeleton-pulse 1.4s ${i*0.08}s ease-in-out infinite`, flexShrink: 0 }} />
+      </div>
+    ))}
+  </div>
+)
 const Err = ({ msg, onRetry }) => (
   <div style={{ textAlign: 'center', paddingTop: 16 }}>
     <p style={{ color: 'var(--danger)', marginBottom: 8, fontSize: 12 }}>

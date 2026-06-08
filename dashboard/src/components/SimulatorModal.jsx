@@ -104,17 +104,26 @@ export default function SimulatorModal({ asteroid, country, lat, lng, onClose, o
           60% { transform: scale(0.9) translateX(4px); opacity:1; }
           100% { transform: scale(1) translateX(0); opacity:1; }
         }
-        .anim-stony { animation: pulse-stony 1.4s ease-in-out infinite; }
-        .anim-iron  { animation: pulse-iron  1s ease-in-out infinite; }
+        .anim-stony    { animation: pulse-stony    1.4s ease-in-out infinite; }
+        .anim-iron     { animation: pulse-iron     1s   ease-in-out infinite; }
         .anim-cometary { animation: pulse-cometary 1.2s ease-in-out infinite; }
+        @keyframes modal-in {
+          from { opacity:0; transform: translate(-50%,-48%) scale(0.96); }
+          to   { opacity:1; transform: translate(-50%,-50%) scale(1); }
+        }
+        @keyframes backdrop-in {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
       `}</style>
 
       {/* Backdrop */}
       <div
         onClick={onClose}
         style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-          zIndex: 1000, backdropFilter: 'blur(3px)',
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+          zIndex: 1000, backdropFilter: 'blur(4px)',
+          animation: 'backdrop-in 0.15s ease',
         }}
       />
 
@@ -131,25 +140,48 @@ export default function SimulatorModal({ asteroid, country, lat, lng, onClose, o
         maxWidth: 'calc(100vw - 32px)',
         maxHeight: '90vh',
         overflow: 'auto',
-        boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+        boxShadow: '0 32px 100px rgba(0,0,0,0.6)',
+        animation: 'modal-in 0.2s ease',
       }}>
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: 0 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
               ☄️ Inslagconfiguratie
             </h2>
-            <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-              <strong style={{ color: 'var(--accent)' }}>{asteroid?.naam ?? asteroid?.name}</strong>
-              {lat != null && <span> @ {lat.toFixed(2)}°, {lng.toFixed(2)}°</span>}
-            </p>
+            <div style={{ marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12 }}>
+              <span style={{ color: 'var(--muted)' }}>
+                Object: <strong style={{ color: 'var(--accent)' }}>{asteroid?.naam ?? asteroid?.name ?? '—'}</strong>
+              </span>
+              {asteroid?.diameter_min != null && (
+                <span style={{ color: 'var(--muted)' }}>
+                  Ø <strong style={{ color: 'var(--text)' }}>
+                    {Number(asteroid.diameter_min).toFixed(0)}–{Number(asteroid.diameter_max).toFixed(0)} m
+                  </strong>
+                </span>
+              )}
+              {asteroid?.snelheid != null && (
+                <span style={{ color: 'var(--muted)' }}>
+                  🚀 <strong style={{ color: 'var(--text)' }}>{Number(asteroid.snelheid).toLocaleString('nl-NL')} km/u</strong>
+                </span>
+              )}
+              {lat != null && (
+                <span style={{ color: 'var(--muted)' }}>
+                  📍 <strong style={{ color: 'var(--text)' }}>{lat.toFixed(2)}°, {lng.toFixed(2)}°</strong>
+                </span>
+              )}
+            </div>
           </div>
           <button
             onClick={onClose}
+            title="Sluiten (Escape)"
             style={{
-              background: 'none', border: 'none', color: 'var(--muted)',
-              fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: '0 4px',
+              background: 'none', border: '1px solid transparent', borderRadius: 8,
+              color: 'var(--muted)', fontSize: 22, cursor: 'pointer',
+              lineHeight: 1, padding: '2px 6px', transition: 'all 0.15s', flexShrink: 0,
             }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}
           >×</button>
         </div>
 
@@ -202,14 +234,24 @@ export default function SimulatorModal({ asteroid, country, lat, lng, onClose, o
         </div>
 
         {/* Step indicator */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          {[1, 2].map(s => (
-            <div key={s} style={{
-              flex: 1, height: 3, borderRadius: 2,
-              background: s <= step ? 'var(--accent)' : 'var(--border)',
-              transition: 'background 0.3s',
-            }} />
-          ))}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+            {[1, 2].map(s => (
+              <div key={s} style={{
+                flex: 1, height: 3, borderRadius: 2,
+                background: s <= step ? 'var(--accent)' : 'var(--border)',
+                transition: 'background 0.3s',
+              }} />
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+            <span style={{ color: step === 1 ? 'var(--accent)' : 'var(--success)', fontWeight: step === 1 ? 700 : 500 }}>
+              {step > 1 ? '✓ ' : ''}Stap 1: Samenstelling
+            </span>
+            <span style={{ color: step === 2 ? 'var(--accent)' : 'var(--muted)', fontWeight: step === 2 ? 700 : 400 }}>
+              Stap 2: Doeltype
+            </span>
+          </div>
         </div>
 
         {step === 1 && (

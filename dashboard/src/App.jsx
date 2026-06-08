@@ -6,6 +6,7 @@ import './index.css'
 
 import Topbar from './components/Topbar'
 import WidgetPanel from './components/WidgetPanel'
+import ErrorBoundary from './components/ErrorBoundary'
 import WidgetAsteroids from './widgets/WidgetAsteroids'
 import WidgetFireballs from './widgets/WidgetFireballs'
 import WidgetEarthquakes from './widgets/WidgetEarthquakes'
@@ -154,14 +155,16 @@ export default function App() {
             {layout.map(({ i }) => (
               <div key={i} style={{ height: '100%' }}>
                 <WidgetWrapper id={i} editMode={editMode} onClose={() => toggleWidget(i)}>
-                  {i === 'asteroids'   && <WidgetAsteroids />}
-                  {i === 'fireballs'   && <WidgetFireballs />}
-                  {i === 'earthquakes' && <WidgetEarthquakes />}
-                  {i === 'simulator'   && <WidgetSimulatorMap />}
-                  {i === 'random'      && <WidgetRandomAsteroid />}
-                  {i === 'dbstatus'    && <WidgetDbStatus />}
-                  {i === 'stats'       && <WidgetStats />}
-                  {i === 'newsarticle' && <WidgetNewsArticle />}
+                  <ErrorBoundary key={i}>
+                    {i === 'asteroids'   && <WidgetAsteroids />}
+                    {i === 'fireballs'   && <WidgetFireballs />}
+                    {i === 'earthquakes' && <WidgetEarthquakes />}
+                    {i === 'simulator'   && <WidgetSimulatorMap />}
+                    {i === 'random'      && <WidgetRandomAsteroid />}
+                    {i === 'dbstatus'    && <WidgetDbStatus />}
+                    {i === 'stats'       && <WidgetStats />}
+                    {i === 'newsarticle' && <WidgetNewsArticle />}
+                  </ErrorBoundary>
                 </WidgetWrapper>
               </div>
             ))}
@@ -172,38 +175,49 @@ export default function App() {
   )
 }
 
+const WIDGET_META = {
+  asteroids:   { label: 'Asteroïden',        icon: '☄️' },
+  fireballs:   { label: 'Vuurbolletjes',      icon: '🔭' },
+  earthquakes: { label: 'Aardbevingen',       icon: '🌍' },
+  simulator:   { label: 'Impact Simulator',   icon: '💥' },
+  random:      { label: 'Willekeurig Object', icon: '🎲' },
+  dbstatus:    { label: 'Database Status',    icon: '🗄️' },
+  stats:       { label: 'Statistieken',        icon: '📊' },
+  newsarticle: { label: 'AI Nieuwsbericht',    icon: '📰' },
+}
+
+// Widgets that need zero inner padding (e.g. map fills full area)
+const NO_PADDING_WIDGETS = new Set(['simulator'])
+
 function WidgetWrapper({ id, editMode, onClose, children }) {
-  const labels = {
-    asteroids:   'Asteroïden',
-    fireballs:   'Vuurbolletjes',
-    earthquakes: 'Aardbevingen',
-    simulator:   'Impact Simulator',
-    random:      'Willekeurig Object',
-    dbstatus:    'Database Status',
-    stats:       'Statistieken',
-    newsarticle: 'AI Nieuwsbericht',
-  }
+  const meta = WIDGET_META[id] ?? { label: id, icon: '▪' }
   return (
-    <div style={{
-      height: '100%', display: 'flex', flexDirection: 'column',
-      background: 'var(--surface)', border: '1px solid var(--border)',
-      borderRadius: 12, overflow: 'hidden',
-    }}>
+    <div
+      className="widget-enter"
+      style={{
+        height: '100%', display: 'flex', flexDirection: 'column',
+        background: 'var(--surface)', border: '1px solid var(--border)',
+        borderRadius: 12, overflow: 'hidden',
+        boxShadow: 'var(--shadow)',
+      }}
+    >
       <div
         className="widget-drag-handle"
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '8px 12px',
+          padding: '7px 12px',
           background: 'var(--surface2)',
           borderBottom: '1px solid var(--border)',
           cursor: editMode ? 'grab' : 'default',
           userSelect: 'none',
           flexShrink: 0,
+          gap: 8,
         }}
       >
-        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>
-          {editMode && <span style={{ marginRight: 6, color: 'var(--muted)' }}>⠿</span>}
-          {labels[id]}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 600, fontSize: 13, color: 'var(--text)', minWidth: 0 }}>
+          {editMode && <span style={{ color: 'var(--muted)', fontSize: 12, flexShrink: 0 }}>⠿</span>}
+          <span style={{ flexShrink: 0 }}>{meta.icon}</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta.label}</span>
         </span>
         {editMode && (
           <button
@@ -211,14 +225,23 @@ function WidgetWrapper({ id, editMode, onClose, children }) {
             onMouseDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onClose() }}
             style={{
-              background: 'none', border: 'none', color: 'var(--muted)',
-              cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px',
+              flexShrink: 0,
+              width: 22, height: 22,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'none', border: '1px solid transparent', borderRadius: 6,
+              color: 'var(--muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1,
+              transition: 'all 0.15s',
             }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--danger)'; e.currentTarget.style.color = 'var(--danger)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}
             title="Verberg widget"
           >×</button>
         )}
       </div>
-      <div style={{ flex: 1, overflow: 'auto', padding: 12, minHeight: 0 }}>
+      <div style={{
+        flex: 1, overflow: 'auto', minHeight: 0,
+        padding: NO_PADDING_WIDGETS.has(id) ? 0 : 12,
+      }}>
         {children}
       </div>
     </div>
