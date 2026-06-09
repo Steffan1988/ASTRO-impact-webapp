@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 
-export default function WidgetNewsArticle() {
+export default function WidgetNewsArticle({ selectedSimId, simVersion }) {
   const [sims, setSims] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [article, setArticle] = useState(null)
@@ -10,19 +10,31 @@ export default function WidgetNewsArticle() {
   const [error, setError] = useState(null)
   const [dbError, setDbError] = useState(false)
 
-  // Load simulation list
-  const loadSims = useCallback(() => {
+  // Load simulation list — herlaadt ook bij nieuwe simulatie (simVersion)
+  const loadSims = useCallback((selectLatest = false) => {
     fetch('/api/simulations?limit=50')
       .then(r => r.json())
       .then(d => {
         const list = Array.isArray(d) ? d : d.data ?? []
         setSims(list)
-        if (list.length > 0) setSelectedId(prev => prev ?? list[0].id)
+        if (selectLatest && list.length > 0) setSelectedId(list[0].id)
+        else if (list.length > 0) setSelectedId(prev => prev ?? list[0].id)
       })
       .catch(() => setDbError(true))
   }, [])
 
-  useEffect(() => { loadSims() }, [loadSims])
+  useEffect(() => { loadSims(false) }, [loadSims])
+
+  // Nieuwe simulatie → herlaad lijst en selecteer nieuwste
+  useEffect(() => {
+    if (simVersion > 0) loadSims(true)
+  }, [simVersion]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Volg de gedeelde selectie vanuit DbStatus
+  useEffect(() => {
+    if (selectedSimId != null) setSelectedId(selectedSimId)
+    else if (sims.length > 0) setSelectedId(sims[0].id)
+  }, [selectedSimId, sims])
 
   // Load article when selection changes
   useEffect(() => {
@@ -107,9 +119,22 @@ export default function WidgetNewsArticle() {
   )
 
   const sim = sims.find(s => s.id === selectedId)
+  const latestId = sims.length > 0 ? sims[0].id : null
+  const isOld = selectedId && selectedId !== latestId
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
+
+      {/* Context-banner */}
+      {isOld && (
+        <div style={{
+          padding: '5px 10px', borderRadius: 7, flexShrink: 0, fontSize: 11,
+          background: 'rgba(139,92,246,0.12)', border: '1px solid var(--accent2)',
+          color: 'var(--accent2)',
+        }}>
+          🗄️ Geselecteerde simulatie uit geschiedenis — kies een andere via de <strong>Database</strong>-widget
+        </div>
+      )}
 
       {/* Simulatie kiezer */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
@@ -119,15 +144,16 @@ export default function WidgetNewsArticle() {
           disabled={sims.length === 0}
           style={{
             flex: 1, padding: '6px 8px', borderRadius: 6,
-            border: '1px solid var(--border)', background: 'var(--surface2)',
+            border: `1px solid ${isOld ? 'var(--accent2)' : 'var(--border)'}`,
+            background: 'var(--surface2)',
             color: 'var(--text)', fontSize: 12,
           }}
         >
           {sims.length === 0
             ? <option>Nog geen simulaties...</option>
-            : sims.map(s => (
+            : sims.map((s, i) => (
                 <option key={s.id} value={s.id}>
-                  #{s.id} — {s.asteroid_naam ?? '?'} → {s.land_naam ?? '?'} ({s.created_at?.slice(0,10) ?? '?'})
+                  {i === 0 ? '● ' : ''}{s.asteroid_naam ?? '?'} → {s.land_naam ?? '?'} ({s.created_at?.slice(0,10) ?? '?'})
                 </option>
               ))
           }

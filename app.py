@@ -904,7 +904,7 @@ def get_fireballs():
     try:
         resp = requests.get(
             "https://ssd-api.jpl.nasa.gov/fireball.api",
-            params={"limit": 15, "sort": "energy", "order": "desc"},
+            params={"limit": 30},
             timeout=8,
         )
         if not resp.ok:
@@ -914,17 +914,23 @@ def get_fireballs():
         result = []
         for rec in data.get("data", []):
             d = dict(zip(fields, rec))
+            lat_val = d.get("lat")
+            lon_val = d.get("lon")
+            lat_dir = d.get("lat-dir", "N")
+            lon_dir = d.get("lon-dir", "E")
+            lat = float(lat_val) * (-1 if lat_dir == "S" else 1) if lat_val else None
+            lng = float(lon_val) * (-1 if lon_dir == "W" else 1) if lon_val else None
             result.append({
-                "date":          d.get("date", ""),
-                "energy_kt":     float(d.get("energy") or 0),
-                "impact_e_kt":   float(d.get("impact-e") or 0),
-                "lat":           d.get("lat"),
-                "lng":           d.get("lon"),
-                "alt_km":        float(d.get("alt") or 0),
-                "vel_kms":       float(d.get("vel") or 0),
-                "radiated_j":    float(d.get("radiated") or 0),
+                "date":        d.get("date", ""),
+                "energy_kt":   float(d.get("energy") or 0),
+                "impact_e_kt": float(d.get("impact-e") or 0),
+                "lat":         lat,
+                "lng":         lng,
+                "alt_km":      float(d.get("alt") or 0),
+                "vel_kms":     float(d.get("vel") or 0),
             })
-        return jsonify({"data": result})
+        result.sort(key=lambda x: x["energy_kt"], reverse=True)
+        return jsonify({"data": result[:15]})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -973,6 +979,84 @@ def get_simulations():
             if isinstance(row.get("created_at"), datetime):
                 row["created_at"] = row["created_at"].strftime("%Y-%m-%d %H:%M:%S")
         return jsonify({"data": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/asteroid/<asteroid_id>")
+def get_asteroid_detail(asteroid_id):
+    """NASA NeoWs detail endpoint — orbitaaldata + alle naaderingen."""
+    try:
+        resp = requests.get(
+            f"https://api.nasa.gov/neo/rest/v1/neo/{asteroid_id}",
+            params={"api_key": api_key},
+            timeout=12,
+        )
+        if not resp.ok:
+            return jsonify({"error": f"NASA API: {resp.status_code}"}), 502
+        data = resp.json()
+
+        # Orbitaaldata
+        orb = data.get("orbital_data", {})
+
+        # Close approaches — sorteer op datum, geef max 10 toekomstige + 5 historische
+        all_ca = data.get("close_approach_data", [])
+        today_str = datetime.now().strftime("%Y-%b-%d")
+        future = sorted(
+            [c for c in all_ca if c.get("close_approach_date", "") >= datetime.now().strftime("%Y-%m-%d")],
+            key=lambda c: c.get("close_approach_date", "")
+        )[:10]
+        past = sorted(
+            [c for c in all_ca if c.get("close_approach_date", "") < datetime.now().strftime("%Y-%m-%d")],
+            key=lambda c: c.get("close_approach_date", ""),
+            reverse=True
+        )[:5]
+
+        def fmt_ca(c):
+            return {
+                "date":       c.get("close_approach_date", ""),
+                "date_full":  c.get("close_approach_date_full", ""),
+                "miss_km":    float(c["miss_distance"]["kilometers"]),
+                "miss_ld":    float(c["miss_distance"]["lunar"]),
+                "vel_kmu":    float(c["relative_velocity"]["kilometers_per_hour"]),
+                "orbiting":   c.get("orbiting_body", ""),
+            }
+
+        d = data.get("estimated_diameter", {})
+
+        return jsonify({
+            "id":            data.get("id"),
+            "naam":          data.get("name"),
+            "designation":   data.get("designation", ""),
+            "nasa_jpl_url":  data.get("nasa_jpl_url", ""),
+            "is_pha":        data.get("is_potentially_hazardous_asteroid", False),
+            "is_sentry":     data.get("is_sentry_object", False),
+            "absolute_magnitude": data.get("absolute_magnitude_h"),
+            "diameter": {
+                "min_m":  round(d.get("meters", {}).get("estimated_diameter_min", 0), 1),
+                "max_m":  round(d.get("meters", {}).get("estimated_diameter_max", 0), 1),
+                "min_km": round(d.get("kilometers", {}).get("estimated_diameter_min", 0), 4),
+                "max_km": round(d.get("kilometers", {}).get("estimated_diameter_max", 0), 4),
+            },
+            "orbital": {
+                "semi_major_axis":   orb.get("semi_major_axis"),
+                "eccentricity":      orb.get("eccentricity"),
+                "inclination":       orb.get("inclination"),
+                "perihelion":        orb.get("perihelion_distance"),
+                "aphelion":          orb.get("aphelion_distance"),
+                "period_days":       orb.get("orbital_period"),
+                "first_obs":         orb.get("first_observation_date"),
+                "last_obs":          orb.get("last_observation_date"),
+                "obs_used":          orb.get("observations_used"),
+                "orbit_class":       orb.get("orbit_class", {}).get("orbit_class_description", ""),
+                "orbit_class_type":  orb.get("orbit_class", {}).get("orbit_class_type", ""),
+            },
+            "close_approaches": {
+                "total":   len(all_ca),
+                "future":  [fmt_ca(c) for c in future],
+                "recent":  [fmt_ca(c) for c in past],
+            },
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1566,7 +1650,6 @@ def generate_article():
                 with anthropic_client.messages.stream(
                     model="claude-opus-4-8",
                     max_tokens=1500,
-                    thinking={"type": "adaptive"},
                     system=(
                         "Je bent een senior journalist bij het fictieve Nederlandse nieuwsagentschap 'Astro Nieuws BV'. "
                         "Je schrijft dramatische, meeslepende nieuwsartikelen over astronomische catastrofes. "
@@ -1581,7 +1664,8 @@ def generate_article():
 
             # ── Stap 2: sla artikel op en stuur "tekst klaar" event ─────────
             article_id = sla_artikel_op(full_text, sim_id)
-            yield f"data: {json.dumps({'article_done': True, 'article_id': article_id, 'demo': use_demo, 'hoofdstad': sim.get('hoofdstad', '')})}\n\n"
+            # Stuur sim_id terug zodat React de juiste /api/article/<sim_id> route aanroept
+            yield f"data: {json.dumps({'article_done': True, 'article_id': sim_id, 'demo': use_demo, 'hoofdstad': sim.get('hoofdstad', '')})}\n\n"
 
             # ── Stap 3: download afbeelding 1 server-side ───────────────────
             yield f"data: {json.dumps({'img_status': 'Luchtfoto downloaden via Pollinations.AI…'})}\n\n"
@@ -1594,6 +1678,19 @@ def generate_article():
             bestand2 = f"art_{article_id}_2.jpg"
             lokaal2  = download_afbeelding(city_image_url, bestand2)
             yield f"data: {json.dumps({'img2_url': lokaal2, 'done': True})}\n\n"
+
+            # ── Stap 5: sla lokale afbeeldingspaden op in de database ────────
+            try:
+                conn2 = db_connect()
+                with conn2.cursor() as cur2:
+                    cur2.execute(
+                        "UPDATE articles SET image_url=%s, city_image_url=%s WHERE id=%s",
+                        (lokaal1, lokaal2, article_id),
+                    )
+                conn2.commit()
+                conn2.close()
+            except Exception:
+                pass
 
         except anthropic_sdk.AuthenticationError:
             yield f"data: {json.dumps({'error': 'Ongeldige Anthropic API-sleutel. Controleer het .env bestand.'})}\n\n"

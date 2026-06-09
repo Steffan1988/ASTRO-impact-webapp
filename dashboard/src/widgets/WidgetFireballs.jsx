@@ -1,23 +1,47 @@
 import { useEffect, useState, useMemo } from 'react'
+import GlobeModal from '../components/GlobeModal'
+import InfoTip from '../components/InfoTip'
 
 const ENERGY_COLOR = kt =>
   kt >= 100 ? 'var(--danger)' : kt >= 10 ? 'var(--warning)' : kt >= 1 ? '#f97316' : 'var(--muted)'
 
 const COLUMNS = [
-  { key: 'date',         label: 'Datum',           numeric: false },
-  { key: 'energy_kt',   label: 'Energie (kt TNT)', numeric: true  },
-  { key: 'impact_e_kt', label: 'Impact (kt)',       numeric: true  },
-  { key: 'vel_kms',     label: 'Snelheid (km/s)',   numeric: true  },
-  { key: 'alt_km',      label: 'Hoogte (km)',       numeric: true  },
-  { key: 'lat',         label: 'Lat',               numeric: true  },
-  { key: 'lng',         label: 'Lon',               numeric: true  },
+  {
+    key: 'date', label: 'Datum', numeric: false,
+    tip: 'Datum en tijd (UTC) waarop de vuurbol werd waargenomen door satellieten of infrasound-netwerken wereldwijd. UTC is een internationale tijdstandaard.',
+  },
+  {
+    key: 'energy_kt', label: 'Energie (kt TNT)', numeric: true,
+    tip: 'Totale uitgestraalde energie van de vuurbol, in kiloton TNT-equivalent. 1 kt TNT = energie van 1.000 ton dynamiet. De atoombom op Hiroshima had ~15 kt. Waarden boven 100 kt zijn zeldzame, grote gebeurtenissen.',
+  },
+  {
+    key: 'impact_e_kt', label: 'Impact (kt)', numeric: true,
+    tip: 'Geschatte energie die daadwerkelijk de grond of oceaan bereikte na remming in de atmosfeer. Dit is altijd kleiner dan de totale energie, omdat een groot deel als licht en hitte wordt uitgestraald in de lucht.',
+  },
+  {
+    key: 'vel_kms', label: 'Snelheid (km/s)', numeric: true,
+    tip: 'Snelheid van de meteoor bij het binnenkomen van de atmosfeer, in kilometer per seconde. Ter vergelijking: een kogel gaat ~1 km/s. Meteoren komen de atmosfeer in met 11–72 km/s, afhankelijk van hun baan om de Zon.',
+  },
+  {
+    key: 'alt_km', label: 'Hoogte (km)', numeric: true,
+    tip: 'Hoogte boven het aardoppervlak waarop de vuurbol het helderst oplichte (piekhelderheid), in kilometer. Commerciële vliegtuigen vliegen op ~10 km hoogte. Een vuurbol op 30 km is nog hoog in de stratosfeer.',
+  },
+  {
+    key: 'lat', label: 'Lat', numeric: true,
+    tip: 'Geografische breedtegraad van de vuurbol. 0° = evenaar, +90° = Noordpool, −90° = Zuidpool. Positieve waarden liggen op het noordelijk halfrond, negatieve op het zuidelijk.',
+  },
+  {
+    key: 'lng', label: 'Lon', numeric: true,
+    tip: 'Geografische lengtegraad van de vuurbol. 0° = nulmeridiaan (door Greenwich, Londen), positief = oostelijk halfrond, negatief = westelijk halfrond. ±180° is de datumlijn in de Stille Oceaan.',
+  },
 ]
 
 export default function WidgetFireballs() {
-  const [data, setData]       = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState(null)
-  const [sort, setSort]       = useState({ col: 'energy_kt', dir: 'desc' })
+  const [data, setData]           = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState(null)
+  const [sort, setSort]           = useState({ col: 'energy_kt', dir: 'desc' })
+  const [globeFireball, setGlobeFireball] = useState(null)
 
   const load = () => {
     setLoading(true); setError(null)
@@ -57,6 +81,7 @@ export default function WidgetFireballs() {
   )
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
@@ -76,12 +101,16 @@ export default function WidgetFireballs() {
                     padding: '6px 8px', textAlign: 'left', fontWeight: 600,
                     cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
                     color: active ? 'var(--accent)' : 'var(--muted)',
-                  }} title={`Sorteren op ${col.label}`}>
-                    {col.label}
-                    {active && <span style={{ marginLeft: 4, fontSize: 10 }}>{sort.dir === 'asc' ? '▲' : '▼'}</span>}
+                  }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {col.label}
+                      {active && <span style={{ fontSize: 10 }}>{sort.dir === 'asc' ? '▲' : '▼'}</span>}
+                      {col.tip && <InfoTip text={col.tip} />}
+                    </span>
                   </th>
                 )
               })}
+              <th style={{ padding: '6px 4px', width: 28 }} />
             </tr>
           </thead>
           <tbody>
@@ -101,6 +130,13 @@ export default function WidgetFireballs() {
                   <td style={td}>{f.alt_km > 0 ? fmt(f.alt_km) : '—'}</td>
                   <td style={td}>{f.lat != null ? fmt(f.lat) : '—'}</td>
                   <td style={td}>{f.lng != null ? fmt(f.lng) : '—'}</td>
+                  <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                    <button
+                      onClick={() => setGlobeFireball(f)}
+                      title="Bekijk locatie op 3D aardbol"
+                      style={globeBtn}
+                    >🌍</button>
+                  </td>
                 </tr>
               )
             })}
@@ -108,6 +144,11 @@ export default function WidgetFireballs() {
         </table>
       </div>
     </div>
+
+    {globeFireball && (
+      <GlobeModal fireball={globeFireball} onClose={() => setGlobeFireball(null)} />
+    )}
+    </>
   )
 }
 
@@ -154,4 +195,9 @@ const refreshBtn = {
   marginLeft: 'auto', padding: '3px 8px', borderRadius: 6,
   border: '1px solid var(--border)', background: 'var(--surface2)',
   color: 'var(--muted)', cursor: 'pointer', fontSize: 12,
+}
+const globeBtn = {
+  padding: '2px 4px', borderRadius: 5, border: 'none',
+  background: 'none', cursor: 'pointer', fontSize: 14,
+  lineHeight: 1, opacity: 0.75, transition: 'opacity 0.15s',
 }

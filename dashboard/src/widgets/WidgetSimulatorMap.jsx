@@ -79,7 +79,7 @@ const ZONE_CIRCLES = result => {
   ].filter(c => c.r > 0).sort((a, b) => b.r - a.r)
 }
 
-export default function WidgetSimulatorMap() {
+export default function WidgetSimulatorMap({ onSimComplete }) {
   const isDark = useIsDark()
   const [modal, setModal] = useState(null)    // { asteroid, country, lat, lng }
   const [loading, setLoading] = useState(false)
@@ -115,6 +115,7 @@ export default function WidgetSimulatorMap() {
       if (!r.ok) throw new Error(d.error ?? 'Fout')
       setResult(d)
       setImpactPos({ lat: modal.lat, lng: modal.lng })
+      onSimComplete?.()   // vertel App dat er een nieuwe simulatie is
     } catch (e) {
       setResult({ error: e.message })
     }
