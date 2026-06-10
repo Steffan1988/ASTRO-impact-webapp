@@ -473,6 +473,85 @@ def haal_geo_zones(sim: dict) -> dict:
         return {}
 
 
+_ZONE_ORDER_KEYS = ["vuurbal", "zware_vern", "matige_vern", "thermisch", "lichte_schade", "seismisch"]
+_ZONE_MORTALITY  = {"vuurbal": 0.99, "zware_vern": 0.90, "matige_vern": 0.35,
+                    "thermisch": 0.20, "lichte_schade": 0.02, "seismisch": 0.004}
+_ZONE_LABELS     = {"vuurbal": "Vuurbal", "zware_vern": "Zware verwoesting",
+                    "matige_vern": "Matige verwoesting", "thermisch": "Thermisch",
+                    "lichte_schade": "Lichte schade", "seismisch": "Seismisch"}
+
+
+def haal_getroffen_landen(sim: dict) -> list:
+    """Berekent welke landen buiten het primaire impactland worden geraakt en schat slachtoffers."""
+    lat = sim.get("lat") or 0
+    lng = sim.get("lng") or 0
+    if not lat and not lng:
+        return []
+
+    radii = {k: float(sim.get(f"r_{k}", 0) or 0) for k in _ZONE_ORDER_KEYS}
+    max_r = max(radii.values())
+    if max_r < 1:
+        return []
+
+    try:
+        landen = get_valid_landen_cache()["landen"]
+    except Exception:
+        return []
+
+    primair = (sim.get("land_naam") or "").strip().lower()
+    result  = []
+
+    for land in landen:
+        naam = land.get("naam", "")
+        if naam.strip().lower() == primair:
+            continue
+        clat = land.get("lat") or 0
+        clng = land.get("lng") or 0
+        if not clat and not clng:
+            continue
+
+        dist = haversine_km(lat, lng, clat, clng)
+        pop  = land.get("populatie") or 0
+        area = max(land.get("oppervlakte") or 1, 1)
+
+        # Effectieve afstand: buurlanden met gedeelde grens hebben centroïde verder dan hun grens.
+        # Buffer = min(√(area/π), dist/2) voorkomt dat grote landen als Duitsland de kern absorberen.
+        country_r    = math.sqrt(area / math.pi)
+        eff_dist     = max(0.0, dist - min(country_r, dist * 0.5))
+        if eff_dist > max_r:
+            continue
+
+        # Bepaal ergste zone op basis van effectieve afstand
+        worst = None
+        for key in _ZONE_ORDER_KEYS:
+            if radii[key] > 0 and eff_dist <= radii[key]:
+                worst = key
+                break
+        if not worst:
+            continue
+
+        r_km      = radii[worst]
+        zone_area = math.pi * r_km**2
+        # Blootstelling: hoeveel van het land valt binnen de zone
+        exposed_frac = min(1.0, zone_area / area)
+        # Dalingscoëfficiënt op effectieve afstand
+        edge      = max(0.0, (1.0 - eff_dist / r_km) ** 0.6)
+        casualties = round(pop * exposed_frac * _ZONE_MORTALITY[worst] * edge)
+
+        result.append({
+            "naam":         naam,
+            "afstand_km":   round(dist),
+            "zone":         worst,
+            "zone_label":   _ZONE_LABELS[worst],
+            "slachtoffers": casualties,
+            "populatie":    pop,
+            "hoofdstad":    land.get("hoofdstad", naam),
+        })
+
+    result.sort(key=lambda x: x["afstand_km"])
+    return result[:25]
+
+
 # ── Berekeningsfuncties ────────────────────────────────────────────────────
 
 def extract_asteroide_data(asteroid):
@@ -983,6 +1062,22 @@ def get_simulations():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/simulations/<int:sim_id>/affected")
+def get_affected_countries(sim_id):
+    """Geeft landen die worden geraakt door de schaderadii van een simulatie."""
+    try:
+        conn = db_connect()
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM simulations WHERE id = %s", (sim_id,))
+            sim = cur.fetchone()
+        conn.close()
+        if not sim:
+            return jsonify({"error": "Simulatie niet gevonden"}), 404
+        return jsonify({"data": haal_getroffen_landen(sim)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/asteroid/<asteroid_id>")
 def get_asteroid_detail(asteroid_id):
     """NASA NeoWs detail endpoint — orbitaaldata + alle naaderingen."""
@@ -1220,8 +1315,9 @@ def bouw_artikel_prompt(sim: dict) -> str:
     ext_str   = "JA — dit is een extinctie-niveau catastrofe, vergelijkbaar met de Chicxulub-inslag!" if ext else "Nee"
     airburst_str = f"JA — airburst op {airburst_alt:.0f} km hoogte" if airburst else "Nee"
 
-    sl_totaal = int(sim.get("sl_direct", 0)) + int(sim.get("sl_thermisch", 0)) + \
-                int(sim.get("sl_shockgolf", 0)) + int(sim.get("sl_seismisch", 0)) + int(sim.get("sl_overig", 0))
+    sl_totaal   = int(sim.get("sl_direct", 0)) + int(sim.get("sl_thermisch", 0)) + \
+                  int(sim.get("sl_shockgolf", 0)) + int(sim.get("sl_seismisch", 0)) + int(sim.get("sl_overig", 0))
+    intl_totaal = sum(int(l.get("slachtoffers", 0)) for l in sim.get("affected_landen", []))
 
     if city_naam:
         impact_locatie = f"{city_naam}, {sim['land_naam']}"
@@ -1264,6 +1360,25 @@ OPGEHAALDE PLAATSNAMEN (gebruik deze EXACT in het artikel):
   • Seismisch ({sim.get('r_seismisch',0):.0f} km): {fmt_geo('seismisch')}
 """
 
+    # Buurlanden die ook getroffen worden
+    affected = sim.get("affected_landen", [])
+    if affected:
+        intl_lines = "\n".join(
+            f"  • {l['naam']} ({l['afstand_km']} km): {l['zone_label']}"
+            + (f" — ~{l['slachtoffers']:,} slachtoffers" if l['slachtoffers'] > 0 else "")
+            for l in affected[:12]
+        )
+        geo_instructie += f"""
+INTERNATIONALE IMPACT — landen buiten {sim['land_naam']} die ook worden getroffen:
+{intl_lines}
+
+⚠ VERPLICHT IN HET ARTIKEL:
+Noem expliciet welke buurlanden de schokgolf, seismische trillingen of thermische straling voelden.
+Specificeer STEDEN in die buurlanden. Voorbeeld: "In België daverde de aarde in Brussel en Antwerpen.
+In Duitsland werden in Keulen en Düsseldorf ramen verbrijzeld en liepen kelders onder."
+Vermeld ook het internationale extra dodental als dat significant is.
+"""
+
     return f"""Je bent een senior journalist van het Nederlandse nieuwsagentschap "Astro Nieuws BV".
 Schrijf een MEESLEPEND, CINEMATISCH en GEDETAILLEERD fictief nieuwsartikel over de volgende gesimuleerde asteroïde-inslag.
 
@@ -1289,12 +1404,14 @@ IMPACTKRACHT (Collins et al. 2005 model):
 
 SCHADE:
 - Verwoest oppervlak: {sim['vernietigde_opp']:,.0f} km² ({sim['procent_land']:.1f}% van {sim['land_naam']})
-- TOTALE SLACHTOFFERS: {sl_totaal:,}
+- TOTALE SLACHTOFFERS WERELDWIJD: {sl_totaal + intl_totaal:,}
+  ↳ In {sim['land_naam']} zelf: {sl_totaal:,}
   • Directe explosie/blast: {sim['sl_direct']:,}
   • Thermische straling: {sim['sl_thermisch']:,}
   • Shockgolf: {sim['sl_shockgolf']:,}
   • Seismisch: {sim['sl_seismisch']:,}
   • Overige oorzaken: {sim['sl_overig']:,}
+  ↳ In getroffen buurlanden: {intl_totaal:,}
 
 ═══════════════════════ SCHRIJFINSTRUCTIES ═══════════════════════
 
@@ -1381,7 +1498,8 @@ def genereer_demo_artikel(sim: dict) -> str:
     richter_label = sim.get("richter_label", "onbekend")
     land_vernietigd = float(sim.get("procent_land", 0)) >= 99.9
 
-    sl_totaal = int(sim["sl_direct"]) + int(sim["sl_thermisch"]) + int(sim["sl_shockgolf"]) + int(sim["sl_seismisch"]) + int(sim["sl_overig"])
+    sl_totaal   = int(sim["sl_direct"]) + int(sim["sl_thermisch"]) + int(sim["sl_shockgolf"]) + int(sim["sl_seismisch"]) + int(sim["sl_overig"])
+    intl_totaal = sum(int(l.get("slachtoffers", 0)) for l in sim.get("affected_landen", []))
 
     # Kies een buitenlandse wetenschapper als het getroffen land vernietigd is
     # of als de inslag zo groot is dat de lokale overheid niet meer bestaat
@@ -1492,6 +1610,39 @@ Dit is het laatste bericht van Astro Nieuws. Moge deze transmissie iemand bereik
     else:
         kop = f"ASTEROÏDE TREFT {land.upper()}: MASSALE VERWOESTING"
 
+    # Internationale impact-alinea op basis van getroffen buurlanden
+    affected      = sim.get("affected_landen", [])
+    intl_para     = ""
+    if affected:
+        zwaar  = [l for l in affected if l["zone"] in ("vuurbal", "zware_vern", "matige_vern", "thermisch")][:3]
+        seis   = [l for l in affected if l["zone"] in ("lichte_schade", "seismisch")][:5]
+        intl_totaal = sum(l["slachtoffers"] for l in affected)
+
+        def fmt_namen(lst):
+            names = [l["naam"] for l in lst]
+            if len(names) > 1:
+                return ", ".join(names[:-1]) + " en " + names[-1]
+            return names[0] if names else ""
+
+        if zwaar:
+            intl_para += (
+                f"Ook **naburige landen** ontkwamen niet aan de gevolgen. In **{fmt_namen(zwaar)}** "
+                f"werden gebouwen vernietigd en brak paniek uit. Hulpteams melden overbelasting van alle beschikbare capaciteit. "
+            )
+        if seis:
+            hoofdsteden = [l.get("hoofdstad", l["naam"]) for l in seis[:3]]
+            hs_str = ", ".join(hoofdsteden[:-1]) + " en " + hoofdsteden[-1] if len(hoofdsteden) > 1 else hoofdsteden[0]
+            intl_para += (
+                f"De seismische schokgolf (M **{magnitude:.1f}**) daverde tot ver buiten de grenzen: "
+                f"in **{fmt_namen(seis)}** vluchtten mensen de straat op, in steden als **{hs_str}** "
+                f"werden bruggen gesloten en metro's stilgelegd. "
+            )
+        if intl_totaal > 500:
+            intl_para += (
+                f"Het internationale dodental buiten {land} wordt door hulporganisaties geraamd op "
+                f"**{h(intl_totaal)}** extra slachtoffers.\n"
+            )
+
     ondertitel = (
         f"Object met diameter {sim['diameter_min']:.0f}–{sim['diameter_max']:.0f} m "
         f"sloeg in met {sim['energie_megaton']:.0f} megaton TNT — magnitude {magnitude}"
@@ -1562,8 +1713,9 @@ De vrijgekomen energie bedroeg **{sim['energie_megaton']:.0f} megaton TNT** — 
 
 {verwoesting_alinea}
 
-Hulporganisaties schatten het totale dodental op circa **{h(sl_totaal)}**. Daarvan kwamen {h(sim['sl_direct'])} mensen direct om het leven in de vuurbal en explosie. Nog eens {h(sim['sl_thermisch'])} slachtoffers bezweken aan de thermische straling. De shockgolf eiste {h(sim['sl_shockgolf'])} levens en {h(sim['sl_seismisch'])} mensen kwamen om door seismische naschokken.
+Hulporganisaties schatten het totale **wereldwijde** dodental op circa **{h(sl_totaal + intl_totaal)}**. In {land} zelf kwamen {h(sim['sl_direct'])} mensen direct om het leven in de vuurbal en explosie, nog eens {h(sim['sl_thermisch'])} door thermische straling, {h(sim['sl_shockgolf'])} door de shockgolf en {h(sim['sl_seismisch'])} door seismische naschokken — samen **{h(sl_totaal)}** slachtoffers in het getroffen land.
 
+{intl_para}
 {citaat_wetenschap} De Chicxulub-inslag van 66 miljoen jaar geleden, die de dinosaurussen uitroeide, had een vergelijkbare oorsprong — zij het met een miljoenen maal grotere energie.
 
 {citaat_autoriteit} De VN heeft een spoedvergadering bijeengeroepen; tientallen landen hebben hulpteams gemobiliseerd.
@@ -1613,6 +1765,8 @@ def generate_article():
 
     # Haal echte plaatsnamen op per schaderadius via OpenStreetMap Overpass
     sim["geo_zones"] = haal_geo_zones(sim)
+    # Berekeen welke buurlanden getroffen worden (voor artikel + promptcontext)
+    sim["affected_landen"] = haal_getroffen_landen(sim)
 
     image_url      = bouw_afbeelding_url(sim)
     city_image_url = bouw_stad_afbeelding_url(sim)

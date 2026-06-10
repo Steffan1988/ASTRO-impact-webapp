@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { MapContainer, TileLayer, useMapEvents, Marker, Popup, Circle } from 'react-leaflet'
+import { MapContainer, TileLayer, useMapEvents, useMap, Marker, Popup, Circle } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import SimulatorModal from '../components/SimulatorModal'
@@ -28,6 +28,25 @@ function useIsDark() {
     return () => observer.disconnect()
   }, [])
   return isDark
+}
+
+function MapAutoFit() {
+  const map = useMap()
+  useEffect(() => {
+    const container = map.getContainer()
+    const applyZoom = () => {
+      const { width } = container.getBoundingClientRect()
+      if (!width) return
+      const z = Math.max(1, Math.ceil(Math.log2(width / 256)))
+      map.setMinZoom(z)
+      if (map.getZoom() < z) map.setZoom(z)
+    }
+    const ro = new ResizeObserver(() => { map.invalidateSize(); applyZoom() })
+    ro.observe(container)
+    applyZoom()
+    return () => ro.disconnect()
+  }, [map])
+  return null
 }
 
 function DropHandler({ onDrop }) {
@@ -162,12 +181,15 @@ export default function WidgetSimulatorMap({ onSimComplete }) {
         )}
 
         <MapContainer
-          center={[20, 10]} zoom={2}
+          center={[20, 0]} zoom={2}
+          maxBounds={[[-85, -180], [85, 180]]}
+          maxBoundsViscosity={1.0}
           style={{ height: '100%', width: '100%' }}
           zoomControl={true}
           attributionControl={false}
         >
           <TileLayer url={isDark ? DARK_TILES : LIGHT_TILES} attribution={ATTR} />
+          <MapAutoFit />
           <DropHandler onDrop={handleDrop} />
 
           {impactPos && result && !result.error && (

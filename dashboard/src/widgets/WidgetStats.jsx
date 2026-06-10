@@ -1,4 +1,13 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+
+const ZONE_COLOR = {
+  vuurbal:       '#ef4444',
+  zware_vern:    '#f97316',
+  matige_vern:   '#f59e0b',
+  thermisch:     '#ec4899',
+  lichte_schade: '#3b82f6',
+  seismisch:     '#8b5cf6',
+}
 
 const ZONE_BARS = [
   { key: 'r_vuurbal',       label: 'Vuurbal',           color: '#ef4444' },
@@ -36,10 +45,12 @@ const fmtKm = r => {
 }
 
 export default function WidgetStats({ selectedSimId, simVersion }) {
-  const [sim, setSim]           = useState(null)
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState(null)
-  const [latestId, setLatestId] = useState(null)
+  const [sim, setSim]               = useState(null)
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState(null)
+  const [latestId, setLatestId]     = useState(null)
+  const [affected, setAffected]     = useState([])
+  const affectedRef = useRef(null)
 
   const load = useCallback(async (id) => {
     setLoading(true); setError(null)
@@ -68,6 +79,16 @@ export default function WidgetStats({ selectedSimId, simVersion }) {
 
   useEffect(() => { load(selectedSimId) }, [selectedSimId, simVersion, load])
 
+  useEffect(() => {
+    if (!sim?.id) return
+    if (affectedRef.current === sim.id) return
+    affectedRef.current = sim.id
+    fetch(`/api/simulations/${sim.id}/affected`)
+      .then(r => r.json())
+      .then(d => setAffected(Array.isArray(d.data) ? d.data : []))
+      .catch(() => setAffected([]))
+  }, [sim?.id])
+
   if (loading) return <Skeleton />
   if (error)   return <div style={{ color: 'var(--danger)', fontSize: 12, padding: 8 }}>Fout: {error}</div>
   if (!sim)    return (
@@ -79,7 +100,9 @@ export default function WidgetStats({ selectedSimId, simVersion }) {
   )
 
   const isOld = selectedSimId && selectedSimId !== latestId
-  const totCasualties = CASUALTY_BARS.reduce((s, b) => s + Number(sim[b.key] ?? 0), 0)
+  const domCasualties = CASUALTY_BARS.reduce((s, b) => s + Number(sim[b.key] ?? 0), 0)
+  const intlCasualties = affected.reduce((s, c) => s + Number(c.slachtoffers ?? 0), 0)
+  const totCasualties = domCasualties + intlCasualties
   const maxCas = Math.max(...CASUALTY_BARS.map(b => Number(sim[b.key] ?? 0)), 1)
   const maxR   = Math.max(...ZONE_BARS.map(b => Number(sim[b.key] ?? 0)), 1)
   const ext    = sim.extinction_event
@@ -120,7 +143,7 @@ export default function WidgetStats({ selectedSimId, simVersion }) {
         {[
           { label: 'Energie',      val: sim.energie_megaton != null ? `${Number(sim.energie_megaton).toFixed(1)} Mt` : '—', color: 'var(--warning)' },
           { label: 'Magnitude',    val: sim.magnitude != null ? `M ${Number(sim.magnitude).toFixed(1)}` : '—', color: 'var(--accent)' },
-          { label: 'Slachtoffers', val: fmt(totCasualties), color: 'var(--danger)' },
+          { label: intlCasualties > 0 ? 'Slachtoffers (wereldwijd)' : 'Slachtoffers', val: fmt(totCasualties), color: 'var(--danger)' },
           { label: '% vernietigd', val: sim.procent_land != null ? `${Number(sim.procent_land).toFixed(1)}%` : '—', color: 'var(--warning)' },
         ].map(({ label, val, color }) => (
           <div key={label} style={{
@@ -185,6 +208,27 @@ export default function WidgetStats({ selectedSimId, simVersion }) {
           })}
         </div>
       </div>
+
+      {/* Internationale impact */}
+      {affected.length > 0 && (
+        <div style={{ flexShrink: 0 }}>
+          <SectionTitle>Internationale impact</SectionTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {affected.map(c => (
+              <div key={c.naam} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11 }}>
+                <div style={{
+                  width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                  background: ZONE_COLOR[c.zone] ?? 'var(--muted)',
+                }} />
+                <span style={{ flex: 1, color: 'var(--text)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.naam}</span>
+                <span style={{ color: 'var(--muted)', flexShrink: 0, minWidth: 52, textAlign: 'right' }}>{c.afstand_km} km</span>
+                <span style={{ color: ZONE_COLOR[c.zone] ?? 'var(--muted)', flexShrink: 0, fontSize: 10, minWidth: 72, textAlign: 'right' }}>{c.zone_label}</span>
+                <span style={{ color: 'var(--text)', fontWeight: 600, flexShrink: 0, minWidth: 52, textAlign: 'right' }}>{fmt(c.slachtoffers)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Impact parameters */}
       <div style={{ flexShrink: 0 }}>
